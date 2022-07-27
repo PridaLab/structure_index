@@ -232,8 +232,8 @@ def compute_structure_index(data, label, n_bins=10, dims=None, distance_metric='
         shuf_overlap_mat = (shuf_overlap_mat + shuf_overlap_mat.T) / 2
         #iii) computed structure_index
         if graph_type=='binary':
-            shuf_structure_index[s_idx] = 1 - np.mean(np.sum(1*(overlap_mat>=overlap_threshold), axis=0))/(overlap_mat.shape[0]-1)
+            shuf_structure_index[s_idx] = 1 - np.mean(np.sum(1*(shuf_structure_index>=overlap_threshold), axis=0))/(shuf_structure_index.shape[0]-1)
         elif graph_type=='weighted':
-            shuf_structure_index[s_idx] = 1 - np.mean(np.sum(overlap_mat, axis=0))/(overlap_mat.shape[0]-1)
+            shuf_structure_index[s_idx] = 1 - np.mean(np.sum(shuf_structure_index, axis=0))/(shuf_structure_index.shape[0]-1)
 
     return structure_index, bin_label, overlap_mat, shuf_structure_index
