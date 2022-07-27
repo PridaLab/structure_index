@@ -74,7 +74,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, distance_metric='
             label = label[:,0]
     assert label.ndim==1, "label must be a 1D array (or 2D with only one column)."
     #iii) n_bins input
-    assert isinstance(n_bins, int), "Input 'n_bins' must be an integer larger than 1."
+    assert isinstance(n_bins, int) or isinstance(n_bins, np.integer), "Input 'n_bins' must be an integer larger than 1."
     assert n_bins>1, "Input 'n_bins' must be an integer larger than 1."
     #iv) dims input
     if isinstance(dims, type(None)): #if dims is None, then take all dimensions
