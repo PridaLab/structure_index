@@ -120,7 +120,12 @@ def compute_structure_index(data, label, n_bins=10, dims=None, distance_metric='
         num_shuffles = kwargs['num_shuffles']
     else:
         num_shuffles = 100
-
+    #xi) verbose input
+    if 'verbose' in kwargs:
+        verbose = kwargs['verbose']
+        assert isinstance(verbose, bool), "Input 'verbose' must be a boolean."
+    else:
+        verbose = False
     #1.Preprocess data
     data = data[:,dims] #keep only desired dims
     if data.ndim == 1: #if left with 1 dim, keep the 2D shape
@@ -135,6 +140,8 @@ def compute_structure_index(data, label, n_bins=10, dims=None, distance_metric='
     label = np.delete(label,delete_nans, axis=0)
 
     #3.Binarize label
+    if verbose:
+        print('Computing bin-groups...', sep='', end = '')
     if discrete_bin_label: #if discrete label
         bin_label = np.zeros(label.shape)
         unique_label = np.unique(label)
@@ -194,9 +201,15 @@ def compute_structure_index(data, label, n_bins=10, dims=None, distance_metric='
             bin_label[bin_label==unique_bin_label[idx]]= idx
 
     #8. Compute the structure index
+    if verbose:
+        print('\b\b\b - Done\nComputing overlapping: X/X', sep='', end = '')
+        pre_del = '\b'*3 
     #i) compute overlap between bin-groups pairwise
     overlap_mat = np.zeros((np.sum(np.unique(bin_label) > 0), np.sum(np.unique(bin_label) > 0)))
     for ii in range(overlap_mat.shape[0]):
+        if verbose:
+            print(f"{pre_del}{ii+1}/{overlap_mat.shape[0]}", sep='', end = '')
+            pre_del = '\b'*(len(str(ii))+len(str(overlap_mat.shape[0]))+1)
         for jj in range(ii+1, overlap_mat.shape[1]):
             overlap_1_2, overlap_2_1 = compute_pointCloudsOverlap(data[bin_label==ii+1], data[bin_label==jj+1], n_neighbors, distance_metric,overlap_method)
             overlap_mat[ii,jj] = overlap_1_2
@@ -204,13 +217,15 @@ def compute_structure_index(data, label, n_bins=10, dims=None, distance_metric='
     #ii) symetrize overlap matrix
     overlap_mat = (overlap_mat + overlap_mat.T) / 2
     #iii) computed structure_index
+    if verbose:
+        print('\nComputing structure index...', sep='', end = '')
     if graph_type=='binary':
         structure_index = 1 - np.mean(np.sum(1*(overlap_mat>=overlap_threshold), axis=0))/(overlap_mat.shape[0]-1)
     elif graph_type=='weighted':
         structure_index = 1 - np.mean(np.sum(overlap_mat, axis=0))/(overlap_mat.shape[0]-1)
-
+    if verbose:
+        print('\b\b\b - Done')
     #9. Shuffling
-    verbose = True
     if verbose:
         print('Computing shuffling: X/X', sep='', end = '') 
         pre_del = '\b'*3
@@ -218,8 +233,8 @@ def compute_structure_index(data, label, n_bins=10, dims=None, distance_metric='
     shuf_overlap_mat = np.zeros((overlap_mat.shape))
     for s_idx in range(num_shuffles):
         if verbose:
-            print(f"{pre_del}{s_idx}/{num_shuffles}", sep='', end = '')
-            pre_del = '\b'*(len(str(s_idx))+len(str(num_shuffles))+1)
+            print(f"{pre_del}{s_idx+1}/{num_shuffles}", sep='', end = '')
+            pre_del = '\b'*(len(str(s_idx+1))+len(str(num_shuffles))+1)
         shuf_bin_label = copy.deepcopy(bin_label)
         np.random.shuffle(shuf_bin_label)
         shuf_overlap_mat *= 0
@@ -235,5 +250,6 @@ def compute_structure_index(data, label, n_bins=10, dims=None, distance_metric='
             shuf_structure_index[s_idx] = 1 - np.mean(np.sum(1*(shuf_structure_index>=overlap_threshold), axis=0))/(shuf_structure_index.shape[0]-1)
         elif graph_type=='weighted':
             shuf_structure_index[s_idx] = 1 - np.mean(np.sum(shuf_structure_index, axis=0))/(shuf_structure_index.shape[0]-1)
-
+    if verbose:
+        print('\nDone')
     return structure_index, bin_label, overlap_mat, shuf_structure_index
