@@ -209,7 +209,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, distance_metric='
     for ii in range(overlap_mat.shape[0]):
         if verbose:
             print(f"{pre_del}{ii+1}/{overlap_mat.shape[0]}", sep='', end = '')
-            pre_del = '\b'*(len(str(ii))+len(str(overlap_mat.shape[0]))+1)
+            pre_del = '\b'*(len(str(ii+1))+len(str(overlap_mat.shape[0]))+1)
         for jj in range(ii+1, overlap_mat.shape[1]):
             overlap_1_2, overlap_2_1 = compute_pointCloudsOverlap(data[bin_label==ii+1], data[bin_label==jj+1], n_neighbors, distance_metric,overlap_method)
             overlap_mat[ii,jj] = overlap_1_2
@@ -247,9 +247,9 @@ def compute_structure_index(data, label, n_bins=10, dims=None, distance_metric='
         shuf_overlap_mat = (shuf_overlap_mat + shuf_overlap_mat.T) / 2
         #iii) computed structure_index
         if graph_type=='binary':
-            shuf_structure_index[s_idx] = 1 - np.mean(np.sum(1*(shuf_structure_index>=overlap_threshold), axis=0))/(shuf_structure_index.shape[0]-1)
+            shuf_structure_index[s_idx] = 1 - np.mean(np.sum(1*(shuf_overlap_mat>=overlap_threshold), axis=0))/(shuf_overlap_mat.shape[0]-1)
         elif graph_type=='weighted':
-            shuf_structure_index[s_idx] = 1 - np.mean(np.sum(shuf_structure_index, axis=0))/(shuf_structure_index.shape[0]-1)
+            shuf_structure_index[s_idx] = 1 - np.mean(np.sum(shuf_overlap_mat, axis=0))/(shuf_overlap_mat.shape[0]-1)
     if verbose:
         print('\nDone')
     return structure_index, bin_label, overlap_mat, shuf_structure_index
