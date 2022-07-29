@@ -254,6 +254,6 @@ def compute_structure_index(data, label, n_bins=10, dims=None, distance_metric='
             shuf_structure_index[s_idx] = 1 - np.mean(np.sum(shuf_overlap_mat, axis=0))/(shuf_overlap_mat.shape[0]-1)
             if overlap_method=='continuity':
                 shuf_structure_index[s_idx] = 2*(shuf_structure_index[s_idx]-0.5)
-    if verbose:
+    if verbose and num_shuffles > 0:
         print(f" - {np.percentile(shuf_structure_index, 99):.2f}")
     return structure_index, bin_label, overlap_mat, shuf_structure_index
