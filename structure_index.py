@@ -145,7 +145,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, distance_metric='
     if discrete_bin_label: #if discrete label
         bin_label = np.zeros(label.shape)
         unique_label = np.unique(label)
-        for b in unqiue_label:
+        for b in unique_label:
             bin_label[label == b] = 1 + int(np.max(bin_label))
 
     else: #if continuous label
@@ -223,8 +223,10 @@ def compute_structure_index(data, label, n_bins=10, dims=None, distance_metric='
         structure_index = 1 - np.mean(np.sum(1*(overlap_mat>=overlap_threshold), axis=0))/(overlap_mat.shape[0]-1)
     elif graph_type=='weighted':
         structure_index = 1 - np.mean(np.sum(overlap_mat, axis=0))/(overlap_mat.shape[0]-1)
+        if overlap_method=='continuity':
+            structure_index = 2*(structure_index-0.5)
     if verbose:
-        print('\b\b\b - Done')
+        print(f"\b\b\b - {structure_index:.2f}")
     #9. Shuffling
     if verbose:
         print('Computing shuffling: X/X', sep='', end = '') 
@@ -250,6 +252,8 @@ def compute_structure_index(data, label, n_bins=10, dims=None, distance_metric='
             shuf_structure_index[s_idx] = 1 - np.mean(np.sum(1*(shuf_overlap_mat>=overlap_threshold), axis=0))/(shuf_overlap_mat.shape[0]-1)
         elif graph_type=='weighted':
             shuf_structure_index[s_idx] = 1 - np.mean(np.sum(shuf_overlap_mat, axis=0))/(shuf_overlap_mat.shape[0]-1)
+            if overlap_method=='continuity':
+                shuf_structure_index[s_idx] = 2*(shuf_structure_index[s_idx]-0.5)
     if verbose:
-        print('\nDone')
+        print(f" - {np.percentile(shuf_structure_index, 99):.2f}")
     return structure_index, bin_label, overlap_mat, shuf_structure_index
