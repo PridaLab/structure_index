@@ -300,5 +300,6 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
                 shuf_structure_index[s_idx] = 2*(shuf_structure_index[s_idx]-0.5)
     if verbose:
         print(f"Computing shuffling: {np.percentile(shuf_structure_index, 99):.2f}")
-
+    if verbose and num_shuffles > 0:
+        print(f" - {np.percentile(shuf_structure_index, 99):.2f}")
     return structure_index, bin_label, overlap_mat, shuf_structure_index
