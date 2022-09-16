@@ -8,9 +8,40 @@ from sklearn.metrics import pairwise_distances
 from sklearn.manifold import Isomap
 import warnings
 import copy
+from decorator import decorator
 
 overlap_options = ['one_third','continuity']
 graph_options = ['binary', 'weighted']
+distance_options = ['euclidean','geodesic']
+
+def validate_args_types(**decls):
+    """Decorator to check argument types.
+
+    Usage:
+
+    @check_args(name=str, text=(int,str))
+    def parse_rule(name, text): ...
+    """
+    @decorator
+    def wrapper(func, *args, **kwargs):
+        code = func.__code__
+        fname = func.__name__
+        names = code.co_varnames[:code.co_argcount]
+        for argname, argtype in decls.items():
+            arg_provided = True
+            if argname in names:
+                argval = args[names.index(argname)]
+            elif argname in kwargs:
+                argval = kwargs.get(argname)
+            else:
+                arg_provided = False
+            if arg_provided:
+                if not isinstance(argval, argtype):
+                    raise TypeError(f"{fname}(...): arg '{argname}': type is "+\
+                                    f"{type(argval)}, must be {argtype}")
+        return func(*args, **kwargs)
+    return wrapper
+
 
 def filter_noisy_outliers(data):
     D = pairwise_distances(data)
@@ -51,87 +82,101 @@ def compute_pointCloudsOverlap(cloud1, cloud2, k, distance_metric, overlap_metho
     return overlap_1_2, overlap_2_1
 
 
-def compute_structure_index(data, label, n_bins=10, dims=None, distance_metric='euclidean', **kwargs):
+@validate_args_types(data=np.ndarray, label=np.ndarray, nbins=(int,np.integer), 
+    dims=(type(None),list), distance_metric = str, n_neighbors=(int,np.integer),
+    num_shuffles=(int,np.integer), discrete_bin_label=bool, verbose=bool)
+def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     #TODO:
         #distance_metric cosyne?
         #re-evaluate which arguments put outside whichones in kwargs
         #write function definition
-        #do shuffling to compute p-value (1000 times? put it also as kwarg)
         #re-think compute_pointCloudsOverlap function name
         #check all imports are being used
         #include plot-function
-        #in case of discrete label, define discrete bins (done)
         #check n-neighbours vs num points per bin
-
-    #0.Quick assesment of input's validity
+    #__________________________________________________________________________
+    #|                                                                        |#
+    #|                        0. CHECK INPUT VALIDITY                         |#
+    #|________________________________________________________________________|#
+    #Note input type validity is handled by the decorator. Here it the values 
+    #themselves are being checked.
     #i) data input
-    assert isinstance(data, np.ndarray), f"Input 'data' must be a numpy ndarray but it was a {type(data)}"
-    assert data.ndim==2, "Input 'data' must be a 2D numpy ndarray with shape (n,m) where n is the number of samples"+\
-                            " and m the number of dimensions."
+    assert data.ndim==2, "Input 'data' must be a 2D numpy ndarray with shape "+\
+        "(n,m)where n is the number of samples and m the number of dimensions."
+
     #ii) label input
-    assert isinstance(label, np.ndarray), f"Input 'label' must be a numpy ndarray but it was a {type(label)}"
-    if label.ndim==2 and label.shape[1] == 1: #if label 2D with one column transform into column vector
+    if label.ndim==2 and label.shape[1] == 1: #if 2D transform into column vector
             label = label[:,0]
-    assert label.ndim==1, "label must be a 1D array (or 2D with only one column)."
+    assert label.ndim==1,\
+        "label must be a 1D array (or 2D with only one column)."
     #iii) n_bins input
-    assert isinstance(n_bins, int) or isinstance(n_bins, np.integer), "Input 'n_bins' must be an integer larger than 1."
     assert n_bins>1, "Input 'n_bins' must be an integer larger than 1."
     #iv) dims input
     if isinstance(dims, type(None)): #if dims is None, then take all dimensions
         dims = list(range(data.shape[1]))
-    assert isinstance(dims, list), "Input 'dims' must be a list with the dimensions to keep or None to keep all."
-    #v) overlap_method input
+    #v) distance_metric
+    if 'distance_metric' in kwargs:
+        distance_metric = kwargs['distance_metric']
+        assert distance_metric in distance_options, f"Invalid input "+\
+            "'distance_metric'. Valid options are {distance_options}."
+    else:
+        distance_metric = 'euclidean'
+    #vi) overlap_method input
     if 'overlap_method' in kwargs:
         overlap_method = kwargs['overlap_method']
-        assert overlap_method in overlap_options, f"Invalid input 'overlap_method'. Valid graph options are {overlap_options}."
+        assert overlap_method in overlap_options, f"Invalid input "+\
+            "'overlap_method'. Valid options are {overlap_options}."
     else:
         overlap_method = 'one_third'
-    #vi) graph_type input
+    #vii) graph_type input
     if 'graph_type' in kwargs:
         graph_type = kwargs['graph_type']
-        assert graph_type in graph_options, f"Invalid input 'graph_type'. Valid graph options are {graph_options}."
+        assert graph_type in graph_options, f"Invalid input 'graph_type'. "+\
+            "Valid options are {graph_options}."
     else:
         graph_type = 'binary'
-    #vii) overlap_threshold input
+    #viii) overlap_threshold input
     if graph_type == 'binary':
         if 'overlap_threshold' in kwargs:
             overlap_threshold = kwargs['overlap_threshold']
-            assert overlap_threshold>0 and overlap_threshold<=1, "Input 'overlap_threshold' must belong to interval (0,1]."
+            assert overlap_threshold>0 and overlap_threshold<=1, \
+                "Input 'overlap_threshold' must belong to interval (0,1]."
         else:
             overlap_threshold = 0.5
     elif graph_type == 'weighted' and 'overlap_threshold' in kwargs:
-         warnings.warn(f"Input 'graph_type' is not 'binary' ('{graph_type}') but input 'overlap_threshold' provided. "
-                        "It will be ignored.")
-    #viii) n_neighbors input
+         warnings.warn(f"Input 'graph_type' is not 'binary' ('{graph_type}') "
+                "but input 'overlap_threshold' provided. It will be ignored.")
+    #ix) n_neighbors input
     if 'n_neighbors' in kwargs:
         n_neighbors = kwargs['n_neighbors']
-        assert isinstance(n_neighbors,int), "Input 'n_neighbors' must be an integer larger than 2."
-        assert n_neighbors>2, "Input 'n_neighbors' must be an integer larger than 2."
+        assert n_neighbors>2, "Input 'n_neighbors' must be larger than 2."
     else:
         n_neighbors = 3
-    #ix) discrete_bin_label input
+    #x) discrete_bin_label input
     if 'dicrete_bin_label' in kwargs:
         discrete_bin_label = kwargs['dicrete_bin_label']
-        assert isinstance(discrete_bin_label, bool), "Input 'discrete_bin_label' must be a boolean."
     else:
         discrete_bin_label = False
-    #x) num_shuffles input
+    #xi) num_shuffles input
     if 'num_shuffles' in kwargs:
         num_shuffles = kwargs['num_shuffles']
     else:
         num_shuffles = 100
-    #xi) verbose input
+    #xii) verbose input
     if 'verbose' in kwargs:
         verbose = kwargs['verbose']
-        assert isinstance(verbose, bool), "Input 'verbose' must be a boolean."
     else:
         verbose = False
-    #1.Preprocess data
-    data = data[:,dims] #keep only desired dims
+    #__________________________________________________________________________
+    #|                                                                        |#
+    #|                           1. PREPROCESS DATA                           |#
+    #|________________________________________________________________________|#
+    #i).Keep only desired dims
+    data = data[:,dims]
     if data.ndim == 1: #if left with 1 dim, keep the 2D shape
         data = data.reshape(-1,1)
 
-    #2.Delete nan values from label and data
+    #ii).Delete nan values from label and data
     data_nans = np.any(np.isnan(data), axis = 1)
     label_nans = np.isnan(label)
     delete_nans = np.where(data_nans+label_nans)[0]
@@ -139,7 +184,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, distance_metric='
     data = np.delete(data,delete_nans, axis=0)
     label = np.delete(label,delete_nans, axis=0)
 
-    #3.Binarize label
+    #iii).Binarize label
     if verbose:
         print('Computing bin-groups...', sep='', end = '')
     if discrete_bin_label: #if discrete label
@@ -149,14 +194,14 @@ def compute_structure_index(data, label, n_bins=10, dims=None, distance_metric='
             bin_label[label == b] = 1 + int(np.max(bin_label))
 
     else: #if continuous label
-        #i) Check bin-num vs num unique label
+        #a) Check bin-num vs num unique label
         num_unique_label = len(np.unique(label))
         if n_bins>num_unique_label:
              warnings.warn(f"Input 'label' has less unique values ({num_unique_label}) than specified 'n_bins' "
                             f"({n_bins}). Changing 'n_bins' to {num_unique_label}.")
              n_bins = num_unique_label
 
-        #ii) Create bin edges of bin-groups
+        #b) Create bin edges of bin-groups
         if 'min_label' in kwargs:
             min_label = kwargs['min_label']
             label[np.where(label<min_label)[0]] = min_label
@@ -173,43 +218,45 @@ def compute_structure_index(data, label, n_bins=10, dims=None, distance_metric='
         bin_edges = np.column_stack((np.linspace(min_label,min_label+bin_size*(n_bins-1),n_bins),
                                     np.linspace(min_label,min_label+bin_size*(n_bins-1),n_bins)+bin_size))
 
-        #iii) Create bin_label
+        #c) Create bin_label
         bin_label = np.zeros(label.shape)
         for b in range(n_bins-1):
             bin_label[np.logical_and(label >= bin_edges[b,0], label<bin_edges[b,1])] = 1 + int(np.max(bin_label))
         bin_label[np.logical_and(label >= bin_edges[n_bins-1,0], label<=bin_edges[n_bins-1,1])] = 1 + int(np.max(bin_label))
 
-    #6. Clean outliers from each bin-groups if specified in kwargs
+    #iv). Clean outliers from each bin-groups if specified in kwargs
     if 'filter_noise' in kwargs and kwargs['filter_noise']:
         for l in np.unique(bin_label):
             noise_idx = filter_noisy_outliers(data[bin_label==l,:])
             noise_idx = np.where(bin_label==l)[0][noise_idx]
             bin_label[noise_idx] = 0
 
-    #7. Discard outlier bin-groups (n_points < n_neighbors)
-    #i) Compute number of points in each bin-group
+    #v). Discard outlier bin-groups (n_points < n_neighbors)
+    #a) Compute number of points in each bin-group
     n_points = np.array([np.sum(bin_label==value) for value in np.unique(bin_label)])
-    #ii) Get the bin-groups that meet criteria and delete them
+    #b) Get the bin-groups that meet criteria and delete them
     del_labels = np.where(n_points < n_neighbors)[0]
-    #iii) delete outlier bin-groups
+    #c) delete outlier bin-groups
     for del_idx in del_labels:
         bin_label[bin_label==del_idx+1] = 0
-    #iv) renumber bin labels from 1 to n bin-groups
+    #d) renumber bin labels from 1 to n bin-groups
     unique_bin_label = np.unique(bin_label)
     if 0 in np.unique(bin_label):
         for idx in range(1,len(unique_bin_label)):
             bin_label[bin_label==unique_bin_label[idx]]= idx
-
-    #8. Compute the structure index
     if verbose:
-        print('\b\b\b - Done\nComputing overlapping: X/X', sep='', end = '')
-        pre_del = '\b'*3 
+            print('\b\b\b - Done')
+    #__________________________________________________________________________
+    #|                                                                        |#
+    #|                       2. COMPUTE STRUCTURE INDEX                       |#
+    #|________________________________________________________________________|#
     #i) compute overlap between bin-groups pairwise
     overlap_mat = np.zeros((np.sum(np.unique(bin_label) > 0), np.sum(np.unique(bin_label) > 0)))
     for ii in range(overlap_mat.shape[0]):
         if verbose:
-            print(f"{pre_del}{ii+1}/{overlap_mat.shape[0]}", sep='', end = '')
-            pre_del = '\b'*(len(str(ii+1))+len(str(overlap_mat.shape[0]))+1)
+            print(f"Computing overlapping: {ii+1}/{overlap_mat.shape[0]}", end = '\r')
+            if ii+1<overlap_mat.shape[0]:
+                sys.stdout.write('\033[2K\033[1G')      
         for jj in range(ii+1, overlap_mat.shape[1]):
             overlap_1_2, overlap_2_1 = compute_pointCloudsOverlap(data[bin_label==ii+1], data[bin_label==jj+1], n_neighbors, distance_metric,overlap_method)
             overlap_mat[ii,jj] = overlap_1_2
@@ -228,15 +275,12 @@ def compute_structure_index(data, label, n_bins=10, dims=None, distance_metric='
     if verbose:
         print(f"\b\b\b - {structure_index:.2f}")
     #9. Shuffling
-    if verbose:
-        print('Computing shuffling: X/X', sep='', end = '') 
-        pre_del = '\b'*3
     shuf_structure_index = np.zeros((num_shuffles,))
     shuf_overlap_mat = np.zeros((overlap_mat.shape))
     for s_idx in range(num_shuffles):
         if verbose:
-            print(f"{pre_del}{s_idx+1}/{num_shuffles}", sep='', end = '')
-            pre_del = '\b'*(len(str(s_idx+1))+len(str(num_shuffles))+1)
+            print(f"Computing shuffling: {s_idx+1}/{num_shuffles}", end = '\r')
+            sys.stdout.write('\033[2K\033[1G')   
         shuf_bin_label = copy.deepcopy(bin_label)
         np.random.shuffle(shuf_bin_label)
         shuf_overlap_mat *= 0
@@ -255,5 +299,6 @@ def compute_structure_index(data, label, n_bins=10, dims=None, distance_metric='
             if overlap_method=='continuity':
                 shuf_structure_index[s_idx] = 2*(shuf_structure_index[s_idx]-0.5)
     if verbose:
-        print(f" - {np.percentile(shuf_structure_index, 99):.2f}")
+        print(f"Computing shuffling: {np.percentile(shuf_structure_index, 99):.2f}")
+
     return structure_index, bin_label, overlap_mat, shuf_structure_index
