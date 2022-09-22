@@ -55,14 +55,45 @@ def filter_noisy_outliers(data):
     return noiseIdx
 
 
-def compute_pointCloudsOverlap(cloud1, cloud2, k, distance_metric, overlap_method):
+def compute_cloud_overlap(cloud1, cloud2, k, distance_metric, overlap_method):
+    """Compute overlapping between two clouds of points.
+    
+    Parameters:
+    ----------
+        cloud1: numpy 2d array of shape [n_samples_1,n_features]
+            Array containing the cloud of points 1
+
+        cloud2: numpy 2d array of shape [n_samples_2,n_features]
+            Array containing the cloud of points 2
+
+        k: int
+            Number of neighbors used to compute the overlapping between bin-groups. This parameter 
+            controls the tradeoff between local and global structure.
+
+        distance_metric: str
+            Type of distance used to compute the closest n_neighbors. See 'distance_options' for 
+            currently supported distances.
+
+        overlap_method: str (default: 'one_third')
+            Type of method use to compute the overlapping between bin-groups. See 'overlap_options'
+            for currently supported methods.
+
+    Returns:
+    -------
+        overlap_1_2: float
+            Degree of overlapping of cloud1 over cloud2
+
+        overlap_1_2: float
+            Degree of overlapping of cloud2 over cloud1         
+
+    """
     #Stack both clouds
     cloud_all = np.vstack((cloud1, cloud2)).astype('float32')
     idx_sep = cloud1.shape[0]
     #Create cloud label
     cloud_label = np.hstack((np.ones(cloud1.shape[0]), np.ones(cloud2.shape[0])*2))
 
-    #Compute k neighbours graph wieghted by cloud label
+    #Compute k neighbours graph
     if distance_metric == 'euclidean':
         if use_fast:
             index = faiss.IndexFlatL2(cloud_all.shape[1])   # build the index
@@ -70,39 +101,100 @@ def compute_pointCloudsOverlap(cloud1, cloud2, k, distance_metric, overlap_metho
             _, I = index.search(cloud_all, k+1) # sanity check
             I = I[:,1:]
         else:
-            knn_distance_based = NearestNeighbors(n_neighbors=k, metric="minkowski", p = 2).fit(cloud_all)
-            I = knn_distance_based = knn_distance_based.kneighbors(return_distance = False)
+            knn = NearestNeighbors(n_neighbors=k, metric="minkowski", p=2).fit(cloud_all)
+            I = knn.kneighbors(return_distance=False)
 
     elif distance_metric == 'geodesic':
         model_iso = Isomap(n_components = 1)
         emb = model_iso.fit_transform(cloud_all)
         dist_mat = model_iso.dist_matrix_
-        knn_distance_based = NearestNeighbors(n_neighbors=k, metric="precomputed").fit(dist_mat)
-        I = knn_distance_based = knn_distance_based.kneighbors(return_distance = False)
+        knn = NearestNeighbors(n_neighbors=k, metric="precomputed").fit(dist_mat)
+        I = knn.kneighbors(return_distance=False)
 
-    if overlap_method == 'continuity': #total fraction of neighbours that belong to the other cloud
+    #Compute overlapping
+    if overlap_method == 'continuity': #total fraction of neighbors that belong to the other cloud
         overlap_1_2 = np.sum(I[:idx_sep,:]>=idx_sep)/(cloud1.shape[0]*k)
         overlap_2_1 = np.sum(I[idx_sep:,:]<idx_sep)/(cloud2.shape[0]*k)
     elif overlap_method == 'one_third':
         #Compute overlap threshold for each individual point
         overlap_th = k/3
-        degree_1 = np.sum(I[:idx_sep,:]>=idx_sep, axis = 1)
-        overlap_1_2 = (np.sum(degree_1 >= overlap_th) / degree_1.shape[0])
-        degree_2 = np.sum(I[idx_sep:,:]<idx_sep, axis = 1)
-        overlap_2_1 = (np.sum(degree_2 >= overlap_th) / degree_2.shape[0])
+        degree_1 = np.sum(I[:idx_sep,:]>=idx_sep, axis=1)
+        overlap_1_2 = np.sum(degree_1 >= overlap_th)/degree_1.shape[0]
+        degree_2 = np.sum(I[idx_sep:,:]<idx_sep, axis=1)
+        overlap_2_1 = np.sum(degree_2 >= overlap_th)/degree_2.shape[0]
 
     return overlap_1_2, overlap_2_1
 
 
 @validate_args_types(data=np.ndarray, label=np.ndarray, nbins=(int,np.integer), 
-    dims=(type(None),list), distance_metric = str, n_neighbors=(int,np.integer),
+    dims=(type(None),list), distance_metric=str, n_neighbors=(int,np.integer),
     num_shuffles=(int,np.integer), discrete_bin_label=bool, verbose=bool)
 def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
+    '''compute structure index main function
+    
+    Parameters:
+    ----------
+        data: numpy 2d array of shape [n_samples,n_features]
+            Array containing the signal
+
+        label: numpy 1d array of shape [n_samples,]
+            Array containing the labels of the data.
+        
+    Optional parameters:
+    --------------------
+        n_bins: integer (default: 10)
+            number of bin-groups the label will be divided into (they will become nodes on the 
+            graph). Note that it will be ignored if 'discrete_bin_label' is set to True.
+
+        dims: list of integers or None (default: None)
+            list of integers containing the dimensions of data along which the structure index will
+            be computed. Provide None to compute it along all dimensions of data.
+        
+        distance_metric: str (default: 'euclidean')
+            Type of distance used to compute the closest n_neighbors. See 'distance_options' for 
+            currently supported distances.
+
+        overlap_method: str (default: 'one_third')
+            Type of method use to compute the overlapping between bin-groups. See 'overlap_options'
+            for currently supported methods.
+
+        graph_type: str (default: 'weighted')
+            Type of graph used to compute structure index. Either 'weighted' or 'binary'. 
+
+        n_neighbors: int (default: 3)
+            Number of neighbors used to compute the overlapping between bin-groups. This parameter 
+            controls the tradeoff between local and global structure.
+
+        discrete_bin_label: boolean (default: False)
+            If the label is discrete, then one bin-group will be created for each discrete value it 
+            takes. Note that if set to True, 'n_bins' parameter will be ignored.
+        
+        num_shuffles: int (default: 100)
+            Number of shuffles to be computed. Note it must fall within the interval [0, np.inf).
+
+        verbose: boolean (default: False)
+            Boolean controling whether or not to print internal process.
+
+                           
+    Returns:
+    -------
+        structure_index: float
+            Computed structure index
+
+        bin_label: numpy 1d array of shape [n_samples,]
+            Array containing the bin-group to which each data point has been assigned.
+
+        overlap_mat: numpy 2d array of shape [n_bins, n_bins]
+            Array containing the overlapping between each pair of bin-groups.
+
+        shuf_structure_index: numpy 1d array of shape [num_shuffles,]
+            Array containing the structure index computed for each shuffling iteration.
+    '''
+
     #TODO:
         #distance_metric cosyne?
         #re-evaluate which arguments put outside whichones in kwargs
         #write function definition
-        #re-think compute_pointCloudsOverlap function name
         #check all imports are being used
         #include plot-function
         #check n-neighbours vs num points per bin
@@ -114,7 +206,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     #themselves are being checked.
     #i) data input
     assert data.ndim==2, "Input 'data' must be a 2D numpy ndarray with shape "+\
-        "(n,m)where n is the number of samples and m the number of dimensions."
+        " of samples and m the number of dimensions."
 
     #ii) label input
     if label.ndim==2 and label.shape[1] == 1: #if 2D transform into column vector
@@ -172,6 +264,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     #xi) num_shuffles input
     if 'num_shuffles' in kwargs:
         num_shuffles = kwargs['num_shuffles']
+        assert num_shuffles>=0, "Input 'num_shuffles must belong to interval [0, np.inf)"
     else:
         num_shuffles = 100
     #xii) verbose input
@@ -209,8 +302,8 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         #a) Check bin-num vs num unique label
         num_unique_label = len(np.unique(label))
         if n_bins>num_unique_label:
-             warnings.warn(f"Input 'label' has less unique values ({num_unique_label}) than specified 'n_bins' "
-                            f"({n_bins}). Changing 'n_bins' to {num_unique_label}.")
+             warnings.warn(f"Input 'label' has less unique values ({num_unique_label}) than specified "
+                            f"'n_bins' ({n_bins}). Changing 'n_bins' to {num_unique_label}.")
              n_bins = num_unique_label
 
         #b) Create bin edges of bin-groups
@@ -226,15 +319,17 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         else:
             max_label = np.max(label)
 
-        bin_size = (max_label - min_label) / n_bins
-        bin_edges = np.column_stack((np.linspace(min_label,min_label+bin_size*(n_bins-1),n_bins),
-                                    np.linspace(min_label,min_label+bin_size*(n_bins-1),n_bins)+bin_size))
+        bin_size = (max_label - min_label)/ n_bins
+        bin_edges_left = np.linspace(min_label,min_label+bin_size*(n_bins-1),n_bins)
+        bin_edges = np.column_stack((bin_edges_left, bin_edges_left+bin_size))
 
         #c) Create bin_label
         bin_label = np.zeros(label.shape)
         for b in range(n_bins-1):
-            bin_label[np.logical_and(label >= bin_edges[b,0], label<bin_edges[b,1])] = 1 + int(np.max(bin_label))
-        bin_label[np.logical_and(label >= bin_edges[n_bins-1,0], label<=bin_edges[n_bins-1,1])] = 1 + int(np.max(bin_label))
+            points_in_bin = np.logical_and(label>=bin_edges[b,0], label<bin_edges[b,1])
+            bin_label[points_in_bin] = 1 + int(np.max(bin_label))
+        points_in_last_bin = np.logical_and(label>=bin_edges[n_bins-1,0], label<=bin_edges[n_bins-1,1])
+        bin_label[points_in_last_bin] = 1 + int(np.max(bin_label))
 
     #iv). Clean outliers from each bin-groups if specified in kwargs
     if 'filter_noise' in kwargs and kwargs['filter_noise']:
@@ -263,31 +358,34 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     #|                       2. COMPUTE STRUCTURE INDEX                       |#
     #|________________________________________________________________________|#
     #i) compute overlap between bin-groups pairwise
-    overlap_mat = np.zeros((np.sum(np.unique(bin_label) > 0), np.sum(np.unique(bin_label) > 0)))
+    overlap_mat = np.zeros((np.sum(np.unique(bin_label)>0), np.sum(np.unique(bin_label)>0)))
     for ii in range(overlap_mat.shape[0]):
         if verbose:
             print(f"Computing overlapping: {ii+1}/{overlap_mat.shape[0]}", end = '\r')
             if ii+1<overlap_mat.shape[0]:
                 sys.stdout.write('\033[2K\033[1G')      
         for jj in range(ii+1, overlap_mat.shape[1]):
-            overlap_1_2, overlap_2_1 = compute_pointCloudsOverlap(data[bin_label==ii+1], data[bin_label==jj+1], n_neighbors, distance_metric,overlap_method)
+            overlap_1_2, overlap_2_1 = compute_cloud_overlap(data[bin_label==ii+1], data[bin_label==jj+1], 
+                                                        n_neighbors, distance_metric,overlap_method)
             overlap_mat[ii,jj] = overlap_1_2
             overlap_mat[jj,ii] = overlap_2_1
-    #ii) symetrize overlap matrix
+    #ii) symmetrize overlap matrix
     overlap_mat = (overlap_mat + overlap_mat.T) / 2
-    #iii) computed structure_index
+    #iii) compute structure_index
     if verbose:
         print('\nComputing structure index...', sep='', end = '')
     if graph_type=='binary':
-        structure_index = 1 - np.mean(np.sum(1*(overlap_mat>=overlap_threshold), axis=0))/(overlap_mat.shape[0]-1)
+        degree_nodes = np.sum(1*(overlap_mat>=overlap_threshold), axis=0)
+        structure_index = 1 - np.mean(degree_nodes)/(overlap_mat.shape[0]-1)
     elif graph_type=='weighted':
-        structure_index = 1 - np.mean(np.sum(overlap_mat, axis=0))/(overlap_mat.shape[0]-1)
+        degree_nodes = np.sum(overlap_mat, axis=0)
+        structure_index = 1 - np.mean(degree_nodes)/(overlap_mat.shape[0]-1)
         if overlap_method=='continuity':
             structure_index = 2*(structure_index-0.5)
     if verbose:
         print(f"\b\b\b: {structure_index:.2f}")
     #9. Shuffling
-    shuf_structure_index = np.zeros((num_shuffles,))
+    shuf_structure_index = np.zeros((num_shuffles,))*np.nan
     shuf_overlap_mat = np.zeros((overlap_mat.shape))
     for s_idx in range(num_shuffles):
         if verbose:
@@ -298,19 +396,22 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         shuf_overlap_mat *= 0
         for ii in range(shuf_overlap_mat.shape[0]):
             for jj in range(ii+1, shuf_overlap_mat.shape[1]):
-                overlap_1_2, overlap_2_1 = compute_pointCloudsOverlap(data[shuf_bin_label==ii+1], data[shuf_bin_label==jj+1], n_neighbors, distance_metric,overlap_method)
+                overlap_1_2, overlap_2_1 = compute_cloud_overlap(data[shuf_bin_label==ii+1], data[shuf_bin_label==jj+1], 
+                                                        n_neighbors, distance_metric,overlap_method)
                 shuf_overlap_mat[ii,jj] = overlap_1_2
                 shuf_overlap_mat[jj,ii] = overlap_2_1
         #ii) symetrize overlap matrix
         shuf_overlap_mat = (shuf_overlap_mat + shuf_overlap_mat.T) / 2
         #iii) computed structure_index
         if graph_type=='binary':
-            shuf_structure_index[s_idx] = 1 - np.mean(np.sum(1*(shuf_overlap_mat>=overlap_threshold), axis=0))/(shuf_overlap_mat.shape[0]-1)
+            degree_nodes = np.sum(1*(shuf_overlap_mat>=overlap_threshold), axis=0)
+            shuf_structure_index[s_idx] = 1 - np.mean(degree_nodes)/(shuf_overlap_mat.shape[0]-1)
         elif graph_type=='weighted':
-            shuf_structure_index[s_idx] = 1 - np.mean(np.sum(shuf_overlap_mat, axis=0))/(shuf_overlap_mat.shape[0]-1)
+            degree_nodes = np.sum(shuf_overlap_mat, axis=0)
+            shuf_structure_index[s_idx] = 1 - np.mean(degree_nodes)/(shuf_overlap_mat.shape[0]-1)
             if overlap_method=='continuity':
                 shuf_structure_index[s_idx] = 2*(shuf_structure_index[s_idx]-0.5)
-    if verbose:
+    if verbose and num_shuffles>0:
         print(f"Computing shuffling: {np.percentile(shuf_structure_index, 99):.2f}")
 
     return structure_index, bin_label, overlap_mat, shuf_structure_index
