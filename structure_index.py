@@ -1,13 +1,17 @@
-import sys
+import sys, warnings, copy
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import sparse, linalg
-import pandas as pd
-from sklearn.neighbors import kneighbors_graph, NearestNeighbors
+from sklearn.neighbors import NearestNeighbors
+
+try:
+    import faiss
+    use_fast = True
+except:
+    use_fast = False
+
 from sklearn.metrics import pairwise_distances
 from sklearn.manifold import Isomap
-import warnings
-import copy
 from decorator import decorator
 
 overlap_options = ['one_third','continuity']
@@ -53,30 +57,38 @@ def filter_noisy_outliers(data):
 
 def compute_pointCloudsOverlap(cloud1, cloud2, k, distance_metric, overlap_method):
     #Stack both clouds
-    cloud_all = np.vstack((cloud1, cloud2))
+    cloud_all = np.vstack((cloud1, cloud2)).astype('float32')
+    idx_sep = cloud1.shape[0]
     #Create cloud label
     cloud_label = np.hstack((np.ones(cloud1.shape[0]), np.ones(cloud2.shape[0])*2))
 
     #Compute k neighbours graph wieghted by cloud label
     if distance_metric == 'euclidean':
-        connectivity = kneighbors_graph(X=cloud_all, n_neighbors=k, mode='connectivity', include_self=False).toarray() * cloud_label
+        if use_fast:
+            index = faiss.IndexFlatL2(cloud_all.shape[1])   # build the index
+            index.add(cloud_all) # add vectors to the index
+            _, I = index.search(cloud_all, k+1) # sanity check
+            I = I[:,1:]
+        else:
+            knn_distance_based = NearestNeighbors(n_neighbors=k, metric="minkowski", p = 2).fit(cloud_all)
+            I = knn_distance_based = knn_distance_based.kneighbors(return_distance = False)
+
     elif distance_metric == 'geodesic':
         model_iso = Isomap(n_components = 1)
         emb = model_iso.fit_transform(cloud_all)
         dist_mat = model_iso.dist_matrix_
-        knn_distance_based = (NearestNeighbors(n_neighbors=3, metric="precomputed").fit(dist_mat))
-        connectivity = knn_distance_based.kneighbors_graph(mode='connectivity').toarray()  * cloud_label
+        knn_distance_based = NearestNeighbors(n_neighbors=k, metric="precomputed").fit(dist_mat)
+        I = knn_distance_based = knn_distance_based.kneighbors(return_distance = False)
 
     if overlap_method == 'continuity': #total fraction of neighbours that belong to the other cloud
-        overlap_1_2 = np.sum(connectivity[cloud_label==1,:]==2)/(cloud1.shape[0]*k)
-        overlap_2_1 = np.sum(connectivity[cloud_label==2,:]==1)/(cloud2.shape[0]*k)
+        overlap_1_2 = np.sum(I[:idx_sep,:]>=idx_sep)/(cloud1.shape[0]*k)
+        overlap_2_1 = np.sum(I[idx_sep:,:]<idx_sep)/(cloud2.shape[0]*k)
     elif overlap_method == 'one_third':
         #Compute overlap threshold for each individual point
         overlap_th = k/3
-        degree_1 = np.sum(connectivity==2, axis=1)[cloud_label==1]
+        degree_1 = np.sum(I[:idx_sep,:]>=idx_sep, axis = 1)
         overlap_1_2 = (np.sum(degree_1 >= overlap_th) / degree_1.shape[0])
-
-        degree_2 = np.sum(connectivity==1, axis=1)[cloud_label==2]
+        degree_2 = np.sum(I[idx_sep:,:]<idx_sep, axis = 1)
         overlap_2_1 = (np.sum(degree_2 >= overlap_th) / degree_2.shape[0])
 
     return overlap_1_2, overlap_2_1
@@ -245,7 +257,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         for idx in range(1,len(unique_bin_label)):
             bin_label[bin_label==unique_bin_label[idx]]= idx
     if verbose:
-            print('\b\b\b - Done')
+            print('\b\b\b: Done')
     #__________________________________________________________________________
     #|                                                                        |#
     #|                       2. COMPUTE STRUCTURE INDEX                       |#
@@ -273,7 +285,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         if overlap_method=='continuity':
             structure_index = 2*(structure_index-0.5)
     if verbose:
-        print(f"\b\b\b - {structure_index:.2f}")
+        print(f"\b\b\b: {structure_index:.2f}")
     #9. Shuffling
     shuf_structure_index = np.zeros((num_shuffles,))
     shuf_overlap_mat = np.zeros((overlap_mat.shape))
@@ -300,6 +312,5 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
                 shuf_structure_index[s_idx] = 2*(shuf_structure_index[s_idx]-0.5)
     if verbose:
         print(f"Computing shuffling: {np.percentile(shuf_structure_index, 99):.2f}")
-    if verbose and num_shuffles > 0:
-        print(f" - {np.percentile(shuf_structure_index, 99):.2f}")
+
     return structure_index, bin_label, overlap_mat, shuf_structure_index
