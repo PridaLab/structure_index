@@ -98,7 +98,7 @@ def compute_cloud_overlap(cloud1, cloud2, k, distance_metric, overlap_method):
         if use_fast:
             index = faiss.IndexFlatL2(cloud_all.shape[1])   # build the index
             index.add(cloud_all) # add vectors to the index
-            _, I = index.search(cloud_all, k+1) # sanity check
+            _, I = index.search(cloud_all, k+1)
             I = I[:,1:]
         else:
             knn = NearestNeighbors(n_neighbors=k, metric="minkowski", p=2).fit(cloud_all)
@@ -194,8 +194,6 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     #TODO:
         #distance_metric cosyne?
         #re-evaluate which arguments put outside whichones in kwargs
-        #write function definition
-        #check all imports are being used
         #include plot-function
         #check n-neighbours vs num points per bin
     #__________________________________________________________________________
@@ -244,7 +242,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         if 'overlap_threshold' in kwargs:
             overlap_threshold = kwargs['overlap_threshold']
             assert overlap_threshold>0 and overlap_threshold<=1, \
-                "Input 'overlap_threshold' must belong to interval (0,1]."
+                "Input 'overlap_threshold' must fall within the interval (0,1]."
         else:
             overlap_threshold = 0.5
     elif graph_type == 'weighted' and 'overlap_threshold' in kwargs:
@@ -264,7 +262,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     #xi) num_shuffles input
     if 'num_shuffles' in kwargs:
         num_shuffles = kwargs['num_shuffles']
-        assert num_shuffles>=0, "Input 'num_shuffles must belong to interval [0, np.inf)"
+        assert num_shuffles>=0, "Input 'num_shuffles must fall within the interval [0, np.inf)"
     else:
         num_shuffles = 100
     #xii) verbose input
@@ -369,8 +367,6 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
                                                         n_neighbors, distance_metric,overlap_method)
             overlap_mat[ii,jj] = overlap_1_2
             overlap_mat[jj,ii] = overlap_2_1
-    #ii) symmetrize overlap matrix
-    overlap_mat = (overlap_mat + overlap_mat.T) / 2
     #iii) compute structure_index
     if verbose:
         print('\nComputing structure index...', sep='', end = '')
@@ -382,6 +378,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         structure_index = 1 - np.mean(degree_nodes)/(overlap_mat.shape[0]-1)
         if overlap_method=='continuity':
             structure_index = 2*(structure_index-0.5)
+            structure_index = np.max([structure_index, 0])
     if verbose:
         print(f"\b\b\b: {structure_index:.2f}")
     #9. Shuffling
@@ -400,8 +397,6 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
                                                         n_neighbors, distance_metric,overlap_method)
                 shuf_overlap_mat[ii,jj] = overlap_1_2
                 shuf_overlap_mat[jj,ii] = overlap_2_1
-        #ii) symetrize overlap matrix
-        shuf_overlap_mat = (shuf_overlap_mat + shuf_overlap_mat.T) / 2
         #iii) computed structure_index
         if graph_type=='binary':
             degree_nodes = np.sum(1*(shuf_overlap_mat>=overlap_threshold), axis=0)
@@ -411,7 +406,8 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
             shuf_structure_index[s_idx] = 1 - np.mean(degree_nodes)/(shuf_overlap_mat.shape[0]-1)
             if overlap_method=='continuity':
                 shuf_structure_index[s_idx] = 2*(shuf_structure_index[s_idx]-0.5)
+                shuf_structure_index[s_idx] = np.max([shuf_structure_index[s_idx], 0])
     if verbose and num_shuffles>0:
-        print(f"Computing shuffling: {np.percentile(shuf_structure_index, 99):.2f}")
+        print(f"Computing shuffling: {s_idx+1}/{num_shuffles} - {np.percentile(shuf_structure_index, 99):.2f}")
 
     return structure_index, bin_label, overlap_mat, shuf_structure_index
