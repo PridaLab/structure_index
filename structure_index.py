@@ -126,7 +126,7 @@ def compute_cloud_overlap(cloud1, cloud2, k, distance_metric, overlap_method):
     return overlap_1_2, overlap_2_1
 
 
-@validate_args_types(data=np.ndarray, label=np.ndarray, nbins=(int,np.integer), 
+@validate_args_types(data=np.ndarray, label=np.ndarray, n_bins=(int,np.integer), 
     dims=(type(None),list), distance_metric=str, n_neighbors=(int,np.integer),
     num_shuffles=(int,np.integer), discrete_bin_label=bool, verbose=bool)
 def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
@@ -371,6 +371,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     if verbose:
         print('\nComputing structure index...', sep='', end = '')
     if graph_type=='binary':
+        overlap_mat = (overlap_mat + overlap_mat.T)/2
         degree_nodes = np.sum(1*(overlap_mat>=overlap_threshold), axis=0)
         structure_index = 1 - np.mean(degree_nodes)/(overlap_mat.shape[0]-1)
     elif graph_type=='weighted':
@@ -399,6 +400,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
                 shuf_overlap_mat[jj,ii] = overlap_2_1
         #iii) computed structure_index
         if graph_type=='binary':
+            shuf_overlap_mat = (shuf_overlap_mat + shuf_overlap_mat.T)/2
             degree_nodes = np.sum(1*(shuf_overlap_mat>=overlap_threshold), axis=0)
             shuf_structure_index[s_idx] = 1 - np.mean(degree_nodes)/(shuf_overlap_mat.shape[0]-1)
         elif graph_type=='weighted':
