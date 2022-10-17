@@ -307,15 +307,15 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         #b) Create bin edges of bin-groups
         if 'min_label' in kwargs:
             min_label = kwargs['min_label']
-            label[np.where(label<min_label)[0]] = min_label
         else:
-            min_label = np.min(label)
+            min_label = np.percentile(label,5)
+        label[np.where(label<min_label)[0]] = min_label
 
         if 'max_label' in kwargs:
             max_label = kwargs['max_label']
-            label[np.where(label>max_label)[0]] = max_label
         else:
-            max_label = np.max(label)
+            max_label = np.percentile(label,95)
+        label[np.where(label>max_label)[0]] = max_label
 
         bin_size = (max_label - min_label)/ n_bins
         bin_edges_left = np.linspace(min_label,min_label+bin_size*(n_bins-1),n_bins)
@@ -338,12 +338,14 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
 
     #v). Discard outlier bin-groups (n_points < n_neighbors)
     #a) Compute number of points in each bin-group
-    n_points = np.array([np.sum(bin_label==value) for value in np.unique(bin_label)])
+    unique_bin_label = np.unique(bin_label)
+
+    n_points = np.array([np.sum(bin_label==value) for value in unique_bin_label])
     #b) Get the bin-groups that meet criteria and delete them
     del_labels = np.where(n_points < n_neighbors)[0]
     #c) delete outlier bin-groups
     for del_idx in del_labels:
-        bin_label[bin_label==del_idx+1] = 0
+        bin_label[bin_label==unique_bin_label[del_idx]] = 0
     #d) renumber bin labels from 1 to n bin-groups
     unique_bin_label = np.unique(bin_label)
     if 0 in np.unique(bin_label):
@@ -369,7 +371,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
             overlap_mat[jj,ii] = overlap_2_1
     #iii) compute structure_index
     if verbose:
-        print('\nComputing structure index...', sep='', end = '')
+        print('Computing structure index...', sep='', end = '')
     if graph_type=='binary':
         overlap_mat = (overlap_mat + overlap_mat.T)/2
         degree_nodes = np.sum(1*(overlap_mat>=overlap_threshold), axis=0)
