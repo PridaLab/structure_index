@@ -55,6 +55,79 @@ def filter_noisy_outliers(data):
     return noiseIdx
 
 
+def meshgrid2(arrs):
+    #arrs: tuple with np.arange of shape of all dimensions
+    lens = list(map(len, arrs))
+    dim = len(arrs)
+    sz = 1
+    for s in lens:
+        sz*=s
+    ans = []    
+    for i, arr in enumerate(arrs):
+        slc = [1]*dim
+        slc[i] = lens[i]
+        arr2 = np.asarray(arr).reshape(slc)
+        for j, sz in enumerate(lens):
+            if j!=i:
+                arr2 = arr2.repeat(sz, axis=j) 
+        ans.append(arr2)
+    return tuple(ans)
+
+
+def create_ndim_grid(label, n_bins, min_label, max_label):
+    ndims = label.shape[1]
+    #Get grid limits
+    grid_limits = [(min_label[ii], max_label[ii]) for ii in range(ndims)]
+
+    #Define the edges for each dimension
+    steps = [(grid_limits[ii][1] - grid_limits[ii][0])/n_bins[ii] for ii in range(ndims)]
+
+    grid_edges = [np.hstack((np.linspace(lim[0], lim[0]+s*n, n+1)[:-1].reshape(-1,1),
+                            np.linspace(lim[0], lim[0]+s*n, n+1)[1:].reshape(-1,1)
+                            )) for lim, n, s in zip(grid_limits, n_bins, steps)]
+    
+    #Generate the grid containing the indices of the points of the label and the coordinates as the mid point of edges
+    grid = np.empty([e.shape[0] for e in grid_edges], object)
+    mesh = meshgrid2(tuple([np.arange(s) for s in grid.shape]))
+    meshIdx = np.vstack([col.ravel() for col in mesh]).T
+    coords = np.zeros(meshIdx.shape)
+    grid = grid.ravel()
+    for elem, idx in enumerate(meshIdx):
+        logic = np.zeros(label.shape[0])
+        for dim in range(len(idx)):
+            logic = logic + 1*np.logical_and(label[:,dim] >= grid_edges[dim][idx[dim],0], label[:,dim] <= grid_edges[dim][idx[dim],1])
+            coords[elem,dim] = grid_edges[dim][idx[dim],0] + (grid_edges[dim][idx[dim],1] - grid_edges[dim][idx[dim],0]) / 2
+        grid[elem] = list(np.where(logic == meshIdx.shape[1])[0])
+
+    return grid, coords
+
+def create_ndim_grid_discrete(label):
+    # bin_label = np.zeros(label.shape)
+    # unique_label = np.unique(label)
+    # for b in unique_label:
+    #     bin_label[label == b] = 1 + int(np.max(bin_label))
+
+    #Get grid unique vals for each dim
+    ndims = label.shape[1]
+    grid_unique = [np.unique(label[:,ii]) for ii in range(ndims)]
+
+    #Generate the grid containing the indices of the points of the label and the coordinates as the mid point of edges
+    grid = np.empty([e.shape[0] for e in grid_unique], object)
+    mesh = meshgrid2(tuple([np.arange(s) for s in grid.shape]))
+    meshIdx = np.vstack([col.ravel() for col in mesh]).T
+    coords = np.zeros(meshIdx.shape)
+    grid = grid.ravel()
+    for elem, idx in enumerate(meshIdx):
+        logic = np.zeros(label.shape[0])
+        for dim in range(len(idx)):
+            logic = logic + 1*(label[:,dim] == grid_unique[dim][idx[dim]])
+            coords[elem,dim] = grid_unique[dim][idx[dim]]
+        grid[elem] = list(np.where(logic == meshIdx.shape[1])[0])
+
+    return grid, coords
+
+
+
 def compute_cloud_overlap(cloud1, cloud2, k, distance_metric, overlap_method):
     """Compute overlapping between two clouds of points.
     
@@ -126,7 +199,7 @@ def compute_cloud_overlap(cloud1, cloud2, k, distance_metric, overlap_method):
     return overlap_1_2, overlap_2_1
 
 
-@validate_args_types(data=np.ndarray, label=np.ndarray, n_bins=(int,np.integer), 
+@validate_args_types(data=np.ndarray, label=np.ndarray, n_bins=(int,np.integer, list), 
     dims=(type(None),list), distance_metric=str, n_neighbors=(int,np.integer),
     num_shuffles=(int,np.integer), discrete_bin_label=bool, verbose=bool)
 def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
@@ -207,12 +280,19 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         " of samples and m the number of dimensions."
 
     #ii) label input
-    if label.ndim==2 and label.shape[1] == 1: #if 2D transform into column vector
-            label = label[:,0]
-    assert label.ndim==1,\
+    if label.ndim==1:
+        label = label.reshape(-1,1)
+    assert label.ndim==2,\
         "label must be a 1D array (or 2D with only one column)."
     #iii) n_bins input
-    assert n_bins>1, "Input 'n_bins' must be an integer larger than 1."
+    if isinstance(n_bins, int) or isinstance(n_bins, np.integer):
+        assert n_bins>1,\
+        "Input 'n_bins' must be an int or list of int larger than 1."
+        n_bins = [n_bins for nb in range(label.shape[1])]
+    elif isinstance(n_bins, list):
+        assert np.all([nb>1 for nb in n_bins]),\
+        "Input 'n_bins' must be an int or list of int larger than 1."
+
     #iv) dims input
     if isinstance(dims, type(None)): #if dims is None, then take all dimensions
         dims = list(range(data.shape[1]))
@@ -281,7 +361,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
 
     #ii).Delete nan values from label and data
     data_nans = np.any(np.isnan(data), axis = 1)
-    label_nans = np.isnan(label)
+    label_nans = np.any(np.isnan(label), axis = 1)
     delete_nans = np.where(data_nans+label_nans)[0]
 
     data = np.delete(data,delete_nans, axis=0)
@@ -290,44 +370,41 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     #iii).Binarize label
     if verbose:
         print('Computing bin-groups...', sep='', end = '')
+
     if discrete_bin_label: #if discrete label
-        bin_label = np.zeros(label.shape)
-        unique_label = np.unique(label)
-        for b in unique_label:
-            bin_label[label == b] = 1 + int(np.max(bin_label))
+        grid, coords = create_ndim_grid_discrete(label)
+        bin_label = np.zeros(label.shape[0],).astype(int)
+        for b in range(len(grid)):
+            bin_label[grid[b]] = b+1
 
     else: #if continuous label
         #a) Check bin-num vs num unique label
-        num_unique_label = len(np.unique(label))
-        if n_bins>num_unique_label:
-             warnings.warn(f"Input 'label' has less unique values ({num_unique_label}) than specified "
-                            f"'n_bins' ({n_bins}). Changing 'n_bins' to {num_unique_label}.")
-             n_bins = num_unique_label
+        for dim in range(label.shape[1]):
+            num_unique_label =len(np.unique(label[:,dim]))
+            if n_bins[dim]>num_unique_label:
+                 warnings.warn(f"Input 'label' has less unique values ({num_unique_label}) along "
+                                f"dim {ii} than specified in 'n_bins' ({n_bins[ii]}). Changing "
+                                f" 'n_bins' to {num_unique_label}.")
+                 n_bins[ii] = num_unique_label
 
         #b) Create bin edges of bin-groups
         if 'min_label' in kwargs:
             min_label = kwargs['min_label']
         else:
-            min_label = np.percentile(label,5)
-        label[np.where(label<min_label)[0]] = min_label
-
+            min_label = np.percentile(label,5, axis = 0)
         if 'max_label' in kwargs:
             max_label = kwargs['max_label']
         else:
-            max_label = np.percentile(label,95)
-        label[np.where(label>max_label)[0]] = max_label
+            max_label = np.percentile(label,95, axis = 0)
 
-        bin_size = (max_label - min_label)/ n_bins
-        bin_edges_left = np.linspace(min_label,min_label+bin_size*(n_bins-1),n_bins)
-        bin_edges = np.column_stack((bin_edges_left, bin_edges_left+bin_size))
+        for ld in range(label.shape[1]):
+            label[np.where(label[:,ld]<min_label[ld])[0],ld] = min_label[ld]
+            label[np.where(label[:,ld]>max_label[ld])[0],ld] = max_label[ld]
 
-        #c) Create bin_label
-        bin_label = np.zeros(label.shape)
-        for b in range(n_bins-1):
-            points_in_bin = np.logical_and(label>=bin_edges[b,0], label<bin_edges[b,1])
-            bin_label[points_in_bin] = 1 + int(np.max(bin_label))
-        points_in_last_bin = np.logical_and(label>=bin_edges[n_bins-1,0], label<=bin_edges[n_bins-1,1])
-        bin_label[points_in_last_bin] = 1 + int(np.max(bin_label))
+        grid, coords = create_ndim_grid(label, n_bins, min_label, max_label)
+        bin_label = np.zeros(label.shape[0],).astype(int)
+        for b in range(len(grid)):
+            bin_label[grid[b]] = b+1
 
     #iv). Clean outliers from each bin-groups if specified in kwargs
     if 'filter_noise' in kwargs and kwargs['filter_noise']:
@@ -351,25 +428,31 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     if 0 in np.unique(bin_label):
         for idx in range(1,len(unique_bin_label)):
             bin_label[bin_label==unique_bin_label[idx]]= idx
+    else:
+        for idx in range(0,len(unique_bin_label)):
+            bin_label[bin_label==unique_bin_label[idx]]= idx+1
     if verbose:
             print('\b\b\b: Done')
     #__________________________________________________________________________
     #|                                                                        |#
     #|                       2. COMPUTE STRUCTURE INDEX                       |#
     #|________________________________________________________________________|#
-    #i) compute overlap between bin-groups pairwise
-    overlap_mat = np.zeros((np.sum(np.unique(bin_label)>0), np.sum(np.unique(bin_label)>0)))
+    #i). compute overlap between bin-groups pairwise
+    unique_bin_label = np.unique(bin_label)
+    unique_bin_label = unique_bin_label[unique_bin_label>0]
+    overlap_mat = np.zeros((len(unique_bin_label), len(unique_bin_label)))
     for ii in range(overlap_mat.shape[0]):
         if verbose:
             print(f"Computing overlapping: {ii+1}/{overlap_mat.shape[0]}", end = '\r')
             if ii+1<overlap_mat.shape[0]:
                 sys.stdout.write('\033[2K\033[1G')      
         for jj in range(ii+1, overlap_mat.shape[1]):
-            overlap_1_2, overlap_2_1 = compute_cloud_overlap(data[bin_label==ii+1], data[bin_label==jj+1], 
+            overlap_1_2, overlap_2_1 = compute_cloud_overlap(data[bin_label==unique_bin_label[ii]], 
+                                                        data[bin_label==unique_bin_label[jj]], 
                                                         n_neighbors, distance_metric,overlap_method)
             overlap_mat[ii,jj] = overlap_1_2
             overlap_mat[jj,ii] = overlap_2_1
-    #iii) compute structure_index
+    #ii). compute structure_index
     if verbose:
         print('Computing structure index...', sep='', end = '')
     if graph_type=='binary':
@@ -384,7 +467,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
             structure_index = np.max([structure_index, 0])
     if verbose:
         print(f"\b\b\b: {structure_index:.2f}")
-    #9. Shuffling
+    #iii). Shuffling
     shuf_structure_index = np.zeros((num_shuffles,))*np.nan
     shuf_overlap_mat = np.zeros((overlap_mat.shape))
     for s_idx in range(num_shuffles):
