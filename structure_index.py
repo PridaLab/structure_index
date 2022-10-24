@@ -428,25 +428,31 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     if 0 in np.unique(bin_label):
         for idx in range(1,len(unique_bin_label)):
             bin_label[bin_label==unique_bin_label[idx]]= idx
+    else:
+        for idx in range(0,len(unique_bin_label)):
+            bin_label[bin_label==unique_bin_label[idx]]= idx+1
     if verbose:
             print('\b\b\b: Done')
     #__________________________________________________________________________
     #|                                                                        |#
     #|                       2. COMPUTE STRUCTURE INDEX                       |#
     #|________________________________________________________________________|#
-    #i) compute overlap between bin-groups pairwise
-    overlap_mat = np.zeros((np.sum(np.unique(bin_label)>0), np.sum(np.unique(bin_label)>0)))
+    #i). compute overlap between bin-groups pairwise
+    unique_bin_label = np.unique(bin_label)
+    unique_bin_label = unique_bin_label[unique_bin_label>0]
+    overlap_mat = np.zeros((len(unique_bin_label), len(unique_bin_label)))
     for ii in range(overlap_mat.shape[0]):
         if verbose:
             print(f"Computing overlapping: {ii+1}/{overlap_mat.shape[0]}", end = '\r')
             if ii+1<overlap_mat.shape[0]:
                 sys.stdout.write('\033[2K\033[1G')      
         for jj in range(ii+1, overlap_mat.shape[1]):
-            overlap_1_2, overlap_2_1 = compute_cloud_overlap(data[bin_label==ii+1], data[bin_label==jj+1], 
+            overlap_1_2, overlap_2_1 = compute_cloud_overlap(data[bin_label==unique_bin_label[ii]], 
+                                                        data[bin_label==unique_bin_label[jj]], 
                                                         n_neighbors, distance_metric,overlap_method)
             overlap_mat[ii,jj] = overlap_1_2
             overlap_mat[jj,ii] = overlap_2_1
-    #iii) compute structure_index
+    #ii). compute structure_index
     if verbose:
         print('Computing structure index...', sep='', end = '')
     if graph_type=='binary':
@@ -461,7 +467,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
             structure_index = np.max([structure_index, 0])
     if verbose:
         print(f"\b\b\b: {structure_index:.2f}")
-    #9. Shuffling
+    #iii). Shuffling
     shuf_structure_index = np.zeros((num_shuffles,))*np.nan
     shuf_overlap_mat = np.zeros((overlap_mat.shape))
     for s_idx in range(num_shuffles):
