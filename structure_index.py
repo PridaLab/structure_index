@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import sparse, linalg
 from sklearn.neighbors import NearestNeighbors
+from scipy.spatial import distance_matrix
 
 try:
     import faiss
@@ -101,6 +102,7 @@ def create_ndim_grid(label, n_bins, min_label, max_label):
 
     return grid, coords
 
+
 def create_ndim_grid_discrete(label):
     # bin_label = np.zeros(label.shape)
     # unique_label = np.unique(label)
@@ -127,8 +129,78 @@ def create_ndim_grid_discrete(label):
     return grid, coords
 
 
+def compute_cloud_overlap_radius(cloud1, cloud2, r, distance_metric, overlap_method):
+    """Compute overlapping between two clouds of points.
+    
+    Parameters:
+    ----------
+        cloud1: numpy 2d array of shape [n_samples_1,n_features]
+            Array containing the cloud of points 1
 
-def compute_cloud_overlap(cloud1, cloud2, k, distance_metric, overlap_method):
+        cloud2: numpy 2d array of shape [n_samples_2,n_features]
+            Array containing the cloud of points 2
+
+        k: int
+            Number of neighbors used to compute the overlapping between bin-groups. This parameter 
+            controls the tradeoff between local and global structure.
+
+        distance_metric: str
+            Type of distance used to compute the closest n_neighbors. See 'distance_options' for 
+            currently supported distances.
+
+        overlap_method: str (default: 'one_third')
+            Type of method use to compute the overlapping between bin-groups. See 'overlap_options'
+            for currently supported methods.
+
+    Returns:
+    -------
+        overlap_1_2: float
+            Degree of overlapping of cloud1 over cloud2
+
+        overlap_1_2: float
+            Degree of overlapping of cloud2 over cloud1         
+
+    """
+    #Stack both clouds
+    cloud_all = np.vstack((cloud1, cloud2)).astype('float32')
+    idx_sep = cloud1.shape[0]
+    #Create cloud label
+    cloud_label = np.hstack((np.ones(cloud1.shape[0]), np.ones(cloud2.shape[0])*2))
+
+    #Compute k neighbours graph
+    if distance_metric == 'euclidean':
+        D = distance_matrix(cloud_all, cloud_all,p=2)
+
+    elif distance_metric == 'geodesic':
+        model_iso = Isomap(n_components = 1)
+        emb = model_iso.fit_transform(cloud_all)
+        D = model_iso.dist_matrix_
+
+    I = np.argsort(D, axis = 1)
+    for row in range(I.shape[0]):
+        D[row,:]  = D[row,I[row,:]]
+    I = I[:, 1:].astype('float32')
+    D = D[:, 1:]
+    I[D>r]= np.nan
+    num_neigh = I.shape[0] - np.sum(np.isnan(I), axis = 1).astype('float32') - 1
+    #Compute overlapping
+    if overlap_method == 'continuity': #total fraction of neighbors that belong to the other cloud
+        overlap_1_2 = np.sum(I[:idx_sep,:]>=idx_sep)/np.sum(num_neigh[:idx_sep])
+        overlap_2_1 = np.sum(I[idx_sep:,:]<idx_sep)/np.sum(num_neigh[idx_sep:])
+
+    elif overlap_method == 'one_third':
+        #Compute overlap threshold for each individual point
+        overlap_th = 1/3
+        num_neigh[num_neigh==0] = np.nan
+        degree_1 = np.sum(I[:idx_sep,:]>=idx_sep, axis=1)/num_neigh[:idx_sep]
+        overlap_1_2 = np.sum(degree_1 >= overlap_th)/np.sum(~np.isnan(num_neigh[:idx_sep]))
+        degree_2 = np.sum(I[idx_sep:,:]<idx_sep, axis=1)/num_neigh[idx_sep:]
+        overlap_2_1 = np.sum(degree_2 >= overlap_th)/np.sum(~np.isnan(num_neigh[idx_sep:]))
+
+    return overlap_1_2, overlap_2_1
+
+
+def compute_cloud_overlap_neighbors(cloud1, cloud2, k, distance_metric, overlap_method):
     """Compute overlapping between two clouds of points.
     
     Parameters:
@@ -265,10 +337,11 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     '''
 
     #TODO:
-        #distance_metric cosyne?
-        #re-evaluate which arguments put outside whichones in kwargs
+        #distance_metric: cosyne
+        #re-evaluate which arguments to put outside which ones in kwargs
         #include plot-function
-        #check n-neighbours vs num points per bin
+        #maybe plot neighbors inside radius distribution when radius provided
+        #if radius selected, and no point has neighbors prompt error
     #__________________________________________________________________________
     #|                                                                        |#
     #|                        0. CHECK INPUT VALIDITY                         |#
@@ -329,11 +402,23 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
          warnings.warn(f"Input 'graph_type' is not 'binary' ('{graph_type}') "
                 "but input 'overlap_threshold' provided. It will be ignored.")
     #ix) n_neighbors input
-    if 'n_neighbors' in kwargs:
-        n_neighbors = kwargs['n_neighbors']
-        assert n_neighbors>2, "Input 'n_neighbors' must be larger than 2."
+    if ('n_neighbors' in kwargs) and ('radius' in kwargs):
+        raise ValueError('Both n_neighbors and radius provided. Please only specify one')
+
+    if 'radius' in kwargs:
+        neighborhood_size = kwargs['radius']
+        assert neighborhood_size>0, "Input 'radius' must be larger than 0"
+        compute_cloud_overlap = compute_cloud_overlap_radius
+        min_points_per_bin = 0.1*data.shape[0]/np.prod(n_bins)
     else:
-        n_neighbors = 3
+        if 'n_neighbors' in kwargs:
+            neighborhood_size = kwargs['n_neighbors']
+            assert neighborhood_size>2, "Input 'n_neighbors' must be larger than 2."
+        else:
+            neighborhood_size = 3
+        compute_cloud_overlap = compute_cloud_overlap_neighbors
+        min_points_per_bin = neighborhood_size
+
     #x) discrete_bin_label input
     if 'dicrete_bin_label' in kwargs:
         discrete_bin_label = kwargs['dicrete_bin_label']
@@ -416,10 +501,11 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     #v). Discard outlier bin-groups (n_points < n_neighbors)
     #a) Compute number of points in each bin-group
     unique_bin_label = np.unique(bin_label)
-
     n_points = np.array([np.sum(bin_label==value) for value in unique_bin_label])
+
     #b) Get the bin-groups that meet criteria and delete them
-    del_labels = np.where(n_points < n_neighbors)[0]
+    del_labels = np.where(n_points<min_points_per_bin)[0]
+
     #c) delete outlier bin-groups
     for del_idx in del_labels:
         bin_label[bin_label==unique_bin_label[del_idx]] = 0
@@ -449,7 +535,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         for jj in range(ii+1, overlap_mat.shape[1]):
             overlap_1_2, overlap_2_1 = compute_cloud_overlap(data[bin_label==unique_bin_label[ii]], 
                                                         data[bin_label==unique_bin_label[jj]], 
-                                                        n_neighbors, distance_metric,overlap_method)
+                                                        neighborhood_size, distance_metric,overlap_method)
             overlap_mat[ii,jj] = overlap_1_2
             overlap_mat[jj,ii] = overlap_2_1
     #ii). compute structure_index
@@ -480,7 +566,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         for ii in range(shuf_overlap_mat.shape[0]):
             for jj in range(ii+1, shuf_overlap_mat.shape[1]):
                 overlap_1_2, overlap_2_1 = compute_cloud_overlap(data[shuf_bin_label==ii+1], data[shuf_bin_label==jj+1], 
-                                                        n_neighbors, distance_metric,overlap_method)
+                                                        neighborhood_size, distance_metric,overlap_method)
                 shuf_overlap_mat[ii,jj] = overlap_1_2
                 shuf_overlap_mat[jj,ii] = overlap_2_1
         #iii) computed structure_index
