@@ -468,17 +468,21 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
             num_unique_label =len(np.unique(label[:,dim]))
             if n_bins[dim]>num_unique_label:
                  warnings.warn(f"Input 'label' has less unique values ({num_unique_label}) along "
-                                f"dim {ii} than specified in 'n_bins' ({n_bins[ii]}). Changing "
+                                f"dim {dim} than specified in 'n_bins' ({n_bins[dim]}). Changing "
                                 f" 'n_bins' to {num_unique_label}.")
-                 n_bins[ii] = num_unique_label
+                 n_bins[dim] = num_unique_label
 
         #b) Create bin edges of bin-groups
         if 'min_label' in kwargs:
             min_label = kwargs['min_label']
+            if not isinstance(min_label, list):
+                min_label = [min_label for nb in range(label.shape[1])]
         else:
             min_label = np.percentile(label,5, axis = 0)
         if 'max_label' in kwargs:
             max_label = kwargs['max_label']
+            if not isinstance(max_label, list):
+                max_label = [max_label for nb in range(label.shape[1])]
         else:
             max_label = np.percentile(label,95, axis = 0)
 
