@@ -487,8 +487,8 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
             max_label = np.percentile(label,95, axis = 0)
 
         for ld in range(label.shape[1]):
-            label[np.where(label[:,ld]<min_label[ld])[0],ld] = min_label[ld]
-            label[np.where(label[:,ld]>max_label[ld])[0],ld] = max_label[ld]
+            label[np.where(label[:,ld]<min_label[ld])[0],ld] = min_label[ld] + 0.00001
+            label[np.where(label[:,ld]>max_label[ld])[0],ld] = max_label[ld] - 0.00001
 
         grid, coords = create_ndim_grid(label, n_bins, min_label, max_label)
         bin_label = np.zeros(label.shape[0],).astype(int)
