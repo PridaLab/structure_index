@@ -279,17 +279,20 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     
     Parameters:
     ----------
-        data: numpy 2d array of shape [n_samples,n_features]
+        data: numpy 2d array of shape [n_samples,n_dimensions]
             Array containing the signal
 
-        label: numpy 1d array of shape [n_samples,]
-            Array containing the labels of the data.
+        label: numpy 1d array of shape [n_samples,n_features]
+            Array containing the labels of the data. It can either be a column vector (scalar feature) 
+            or a 2D array (vectorial feature)
         
     Optional parameters:
     --------------------
         n_bins: integer (default: 10)
             number of bin-groups the label will be divided into (they will become nodes on the 
-            graph). Note that it will be ignored if 'discrete_bin_label' is set to True.
+            graph). For vectorial features, if one wants different number of bins for each entry
+            then specify n_bins as a list (i.e. [10,20,5]). Note that it will be ignored if 
+            'discrete_bin_label' is set to True.
 
         dims: list of integers or None (default: None)
             list of integers containing the dimensions of data along which the structure index will
@@ -299,7 +302,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
             Type of distance used to compute the closest n_neighbors. See 'distance_options' for 
             currently supported distances.
 
-        overlap_method: str (default: 'one_third')
+        overlap_method: str (default: 'continuity')
             Type of method use to compute the overlapping between bin-groups. See 'overlap_options'
             for currently supported methods.
 
@@ -356,7 +359,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     if label.ndim==1:
         label = label.reshape(-1,1)
     assert label.ndim==2,\
-        "label must be a 1D array (or 2D with only one column)."
+        "label must be a 1D array (or 2D)."
     #iii) n_bins input
     if isinstance(n_bins, int) or isinstance(n_bins, np.integer):
         assert n_bins>1,\
@@ -382,7 +385,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         assert overlap_method in overlap_options, f"Invalid input "+\
             "'overlap_method'. Valid options are {overlap_options}."
     else:
-        overlap_method = 'one_third'
+        overlap_method = 'continuity'
     #vii) graph_type input
     if 'graph_type' in kwargs:
         graph_type = kwargs['graph_type']
