@@ -14,7 +14,7 @@ Illustration of the concepts behind the definition of the Structure Index (SI). 
  
 ## How to use it
 ```
-SI, bin_label, overlap_mat, shuf_SI = compute_structure_index(data, label)
+structure_index, bin_label, overlap_mat, shuf_structure_index = compute_structure_index(data, label)
 ```
 
 ### Parameters
