@@ -392,7 +392,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         assert graph_type in graph_options, f"Invalid input 'graph_type'. "+\
             "Valid options are {graph_options}."
     else:
-        graph_type = 'binary'
+        graph_type = 'weighted'
     #viii) overlap_threshold input
     if graph_type == 'binary':
         if 'overlap_threshold' in kwargs:
@@ -489,7 +489,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         else:
             max_label = np.percentile(label,95, axis = 0)
 
-        for ld in range(label.shape[1]):
+        for ld in range(label.shape[1]): #prevent rounding problems
             label[np.where(label[:,ld]<min_label[ld])[0],ld] = min_label[ld] + 0.00001
             label[np.where(label[:,ld]>max_label[ld])[0],ld] = max_label[ld] - 0.00001
 
