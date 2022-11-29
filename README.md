@@ -21,7 +21,7 @@ structure_index, bin_label, overlap_mat, shuf_structure_index = compute_structur
         data: numpy 2d array of shape [n_samples,n_dimensions]
             Array containing the signal
 
-        label: numpy 1d array of shape [n_samples,n_features]
+        label: numpy 2d array of shape [n_samples,n_features]
             Array containing the labels of the data. It can either be a column vector (scalar feature) 
             or a 2D array (vectorial feature)
 
