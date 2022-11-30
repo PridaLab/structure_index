@@ -22,6 +22,8 @@ SI, bin_label, overlap_mat, shuf_SI = compute_structure_index(data, label)
             Array containing the signal
 
         label: numpy 2d array of shape [n_samples,n_features]
+            Array containing the labels of the data. It can either be a 
+            column vector (scalar feature) or a 2D array (vectorial feature)
 
 
 ### Optional parameters
