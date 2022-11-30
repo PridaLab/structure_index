@@ -271,7 +271,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
             Type of distance used to compute the closest n_neighbors. See 
             'distance_options' for currently supported distances.
 
-        n_neighbors: int (default: 3)
+        n_neighbors: int (default: 15)
             Number of neighbors used to compute the overlapping between 
             bin-groups. This parameter controls the tradeoff between local and 
             global structure.
@@ -364,7 +364,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
             assert neighborhood_size>2, "Input 'n_neighbors' must be larger"+\
                                                                     "than 2."
         else:
-            neighborhood_size = 3
+            neighborhood_size = 15
         cloud_overlap = cloud_overlap_neighbors
 
     #x) discrete_label input
@@ -512,7 +512,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
             for b in range(a+1, shuf_overlap_mat.shape[1]):
                 B = data[shuf_bin_label==unique_bin_label[b]]
                 overlap_a_b, overlap_b_a = cloud_overlap(A,B, 
-                                        neighborhood_size, distance_metric)
+                                            neighborhood_size, distance_metric)
                 shuf_overlap_mat[a,b] = overlap_a_b
                 shuf_overlap_mat[b,a] = overlap_b_a
 
@@ -524,6 +524,6 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         if verbose: bar.update(1) 
     if verbose: bar.close()
     if verbose and num_shuffles>0:
-        print(f"Shuffling 99th percentile: {np.percentile(shuf_structure_index,99):.2f}")
+        print(f"Shuffling 99th percentile: {np.percentile(shuf_SI,99):.2f}")
 
     return SI, (bin_label,coords), overlap_mat, shuf_SI
