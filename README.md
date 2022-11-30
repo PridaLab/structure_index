@@ -14,63 +14,66 @@ The SI is defined from the overlapping distribution of data points sharing simil
  
 ## How to use it
 ```
-structure_index, bin_label, overlap_mat, shuf_structure_index = compute_structure_index(data, label)
+SI, bin_label, overlap_mat, shuf_SI = compute_structure_index(data, label)
 ```
 
 ### Parameters
         data: numpy 2d array of shape [n_samples,n_dimensions]
             Array containing the signal
 
-        label: numpy 1d array of shape [n_samples,n_features]
-            Array containing the labels of the data. It can either be a column vector (scalar feature) 
-            or a 2D array (vectorial feature)
+        label: numpy 2d array of shape [n_samples,n_features]
+            Array containing the labels of the data. It can either be a 
+            column vector (scalar feature) or a 2D array (vectorial feature)
 
 ### Optional parameters
         n_bins: integer (default: 10)
-            number of bin-groups the label will be divided into (they will become nodes on the 
-            graph). For vectorial features, if one wants different number of bins for each entry
-            then specify n_bins as a list (i.e. [10,20,5]). Note that it will be ignored if 
-            'discrete_bin_label' is set to True.
+            number of bin-groups the label will be divided into (they will 
+            become nodes on the graph). For vectorial features, if one wants 
+            different number of bins for each entry then specify n_bins as a 
+            list (i.e. [10,20,5]). Note that it will be ignored if 
+            'discrete_label' is set to True.
 
         dims: list of integers or None (default: None)
-            list of integers containing the dimensions of data along which the structure index will
-            be computed. Provide None to compute it along all dimensions of data.
+            list of integers containing the dimensions of data along which the 
+            structure index will be computed. Provide None to compute it along 
+            all dimensions of data.
         
         distance_metric: str (default: 'euclidean')
-            Type of distance used to compute the closest n_neighbors. See 'distance_options' for 
-            currently supported distances.
+            Type of distance used to compute the closest n_neighbors. See 
+            'distance_options' for currently supported distances.
 
-        overlap_method: str (default: 'continuity')
-            Type of method use to compute the overlapping between bin-groups. See 'overlap_options'
-            for currently supported methods.
+        n_neighbors: int (default: 15)
+            Number of neighbors used to compute the overlapping between 
+            bin-groups. This parameter controls the tradeoff between local and 
+            global structure.
 
-        graph_type: str (default: 'weighted')
-            Type of graph used to compute structure index. Either 'weighted' or 'binary'. 
-
-        n_neighbors: int (default: 3)
-            Number of neighbors used to compute the overlapping between bin-groups. This parameter 
-            controls the tradeoff between local and global structure.
-
-        discrete_bin_label: boolean (default: False)
-            If the label is discrete one bin-group will be created for each discrete value it 
-            takes. Note that if set to True, 'n_bins' parameter will be ignored.
+        discrete_label: boolean (default: False)
+            If the label is discrete, then one bin-group will be created for 
+            each discrete value it takes. Note that if set to True, 'n_bins' 
+            parameter will be ignored.
         
         num_shuffles: int (default: 100)
-            Number of shuffles to be computed. Note it must fall within the interval [0, np.inf).
+            Number of shuffles to be computed. Note it must fall within the 
+            interval [0, np.inf).
 
         verbose: boolean (default: False)
-            Boolean controling whether or not to print internal process.
+            Boolean controling whether or not to print internal process..
             
 ### Returns:
-        structure_index: float
-            Computed structure index
+        SI: float
+            structure index
 
-        bin_label: numpy 1d array of shape [n_samples,]
-            Array containing the bin-group to which each data point has been assigned.
+        bin_label: tuple
+            Tuple containing:
+                [0] Array indicating the bin-group to which each data point has 
+                    been assigned.
+                [1] Array indicating feature limits of each bin-group. Size is
+                [number_bin_groups, n_features, 3] where the last dimension 
+                contains [bin_st, bin_center, bin_en]
 
         overlap_mat: numpy 2d array of shape [n_bins, n_bins]
             Array containing the overlapping between each pair of bin-groups.
 
-        shuf_structure_index: numpy 1d array of shape [num_shuffles,]
-            Array containing the structure index computed for each shuffling iteration.
-
+        shuf_SI: numpy 1d array of shape [num_shuffles,]
+            Array containing the structure index computed for each shuffling 
+            iteration.
