@@ -368,8 +368,8 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         cloud_overlap = cloud_overlap_neighbors
 
     #x) discrete_label input
-    if 'dicrete_label' in kwargs:
-        discrete_label = kwargs['dicrete_label']
+    if 'discrete_label' in kwargs:
+        discrete_label = kwargs['discrete_label']
         if isinstance(n_bins,bool):
             discrete_label = [discrete_label for idx in range(label.shape[1])]
         else:
