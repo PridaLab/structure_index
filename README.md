@@ -1,6 +1,6 @@
 # Structure Index
 
-Welcome! This repository hosts the implementation for the Structure Index (SI), a graph-based topological metric able to quantify the amount of structure present at the distribution of a given feature over a point cloud in an arbitrary D-dimensional space.
+Welcome! This repository hosts the implementation for the Structure Index (SI), a graph-based topological metric able to quantify the amount of structure present at the distribution of a given feature over a point cloud in an arbitrary D-dimensional space. Follow [this notebook](https://colab.research.google.com/github/PridaLab/structure_index/blob/main/demos/structure_index_demo.ipynb) for a step by step demo.
 
 ## The method
 
@@ -13,6 +13,10 @@ The SI is defined from the overlapping distribution of data points sharing simil
 **A**, Feature gradient distribution in a 2D-ellipsoid data cloud. Each point in the data cloud is assigned to a group associated with a feature bin value (bin-group). **B**, **C**, Next, the overlapping matrix between bin-groups is computed. **D**, The overlapping matrix represents a connection graph between bin-groups, where structure (overlapping, clustering, etc..) can be quantified using the SI from 0 (random, equivalent to full overlapping) to 1 (maximal separation, equivalent to zero overlapping between bins). **E**, The case of a randomly distributed feature in a 2D data cloud.
  
 ## How to use it
+
+[This notebook](https://colab.research.google.com/github/PridaLab/structure_index/blob/main/demos/structure_index_demo.ipynb) illustrates one example of how to use the Structure Index to quantify structure. Follow and execute each block to generate syntethic data and to compute the structure present on it. Moreover it includes a section to use the built-in function of the repo 'draw_graph' to visualize the resulting weighted directed graph.
+
+In sort, the way to compute the structure index is as follows:
 ```
 SI, bin_label, overlap_mat, shuf_SI = compute_structure_index(data, label)
 ```
