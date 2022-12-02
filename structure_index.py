@@ -1,5 +1,6 @@
 import warnings, copy #,sys
 import matplotlib.pyplot as plt
+import matplotlib
 import numpy as np
 #from scipy import sparse, linalg
 from sklearn.neighbors import NearestNeighbors
@@ -13,6 +14,7 @@ from sklearn.metrics import pairwise_distances
 from sklearn.manifold import Isomap
 from decorator import decorator
 from tqdm.auto import tqdm
+
 import networkx as nx
 # overlap_options = ['one_third','continuity']
 # graph_options = ['binary', 'weighted']
