@@ -13,7 +13,7 @@ from sklearn.metrics import pairwise_distances
 from sklearn.manifold import Isomap
 from decorator import decorator
 from tqdm.auto import tqdm
-
+import networkx as nx
 # overlap_options = ['one_third','continuity']
 # graph_options = ['binary', 'weighted']
 distance_options = ['euclidean','geodesic']
