@@ -527,3 +527,105 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         print(f"Shuffling 99th percentile: {np.percentile(shuf_SI,99):.2f}")
 
     return SI, (bin_label,coords), overlap_mat, shuf_SI
+
+
+def draw_graph(overlap_mat, ax, node_cmap = plt.cm.tab10, edge_cmap = plt.cm.Greys, **kwargs):
+    """Draw weighted directed graph from overlap matrix.
+    
+    Parameters:
+    ----------
+        overlap_mat: numpy 2d array of shape [n_bins, n_bins]
+            Array containing the overlapping between each pair of bin-groups.
+
+        ax: matplotlib pyplot axis object.
+
+    Optional parameters:
+    --------------------
+        node_cmap: pyplot colormap (default: plt.cm.tab10)
+            colormap for mapping nodes.
+
+        edge_cmap: pyplot colormap (default: plt.cm.Greys)
+            colormap for mapping intensities of edges.
+
+        node_cmap: pyplot colormap (default: plt.cm.tab10)
+            pyplot colormap used to color the nodes of the graph.
+
+        node_size: scalar or array  (default: 1000)
+            size of nodes. If an array is specified it must be the same length 
+            as nodelist.
+
+        scale_edges: scalar (default: 5)
+            number used to scale the width of the edges.
+
+        edge_vmin: scalar (default: 0)
+            minimum  for edge colormap scaling
+
+        edge_vmax: scalar (default: 0.5)
+            maximum for edge colormap scaling
+
+        node_names: scalar (default: 0)
+            list containing name of nodes. If numerical, then nodes colormap 
+            will be scale according to it.
+
+    Returns:
+    -------
+        overlap_1_2: float
+            Degree of overlapping of cloud1 over cloud2
+
+        overlap_1_2: float
+            Degree of overlapping of cloud2 over cloud1         
+
+    """
+
+    g = nx.from_numpy_matrix(overlap_mat,create_using=nx.DiGraph)
+    number_nodes = g.number_of_nodes()
+
+    if 'node_size' in kwargs:
+        node_size = kwargs['node_size']
+    else:
+        node_size = 1000
+
+    if 'scale_edges' in kwargs:
+        scale_edges = kwargs['scale_edges']
+    else:
+        scale_edges = 5
+
+    if 'edge_vmin' in kwargs:
+        edge_vmin = kwargs['edge_vmin']
+    else:
+        edge_vmin = 0
+
+    if 'edge_vmax' in kwargs:
+        edge_vmax = kwargs['edge_vmax']
+    else:
+        edge_vmax = 0.5
+
+    if 'node_names' in kwargs:
+        node_names = kwargs['node_names']
+        nodes_info = list(g.nodes(data=True))
+        names_dict = {val[0]: node_names[i] for i, val in enumerate(nodes_info)}
+        with_labels = True
+        if not isinstance(node_names[0], str):
+            node_val = node_names
+        else:
+            node_val = range(number_nodes)
+    else:
+        names_dict = dict()
+        node_val = range(number_nodes)
+        with_labels = False
+
+    norm_cmap = matplotlib.colors.Normalize(vmin=np.min(node_val), vmax=np.max(node_val))
+    node_color = list()
+    for ii in range(number_nodes):
+      #colormap possible values = viridis, jet, spectral
+      node_color.append(np.array(node_cmap(norm_cmap(node_val[ii]),bytes=True))/255)
+
+    widths = nx.get_edge_attributes(g, 'weight')
+
+    wdg = nx.draw_networkx(g, pos=nx.circular_layout(g), node_size=800, 
+            node_color=node_color, width=np.array(list(widths.values()))*scale_edges, 
+            edge_color= np.array(list(widths.values())), edge_cmap =edge_cmap, 
+            arrowsize = 20, edge_vmin = 0, edge_vmax = 0.5, labels = names_dict,
+            arrows=True ,connectionstyle="arc3,rad=0.15", with_labels = with_labels, ax=ax)
+    
+    return wdg
