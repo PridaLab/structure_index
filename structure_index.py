@@ -370,7 +370,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     #x) discrete_label input
     if 'discrete_label' in kwargs:
         discrete_label = kwargs['discrete_label']
-        if isinstance(n_bins,bool):
+        if isinstance(discrete_label,bool):
             discrete_label = [discrete_label for idx in range(label.shape[1])]
         else:
             assert np.all([isistance(idx, bool) for idx in discrete_label]),\
@@ -566,14 +566,6 @@ def draw_graph(overlap_mat, ax, node_cmap = plt.cm.tab10, edge_cmap = plt.cm.Gre
         node_names: scalar (default: 0)
             list containing name of nodes. If numerical, then nodes colormap 
             will be scale according to it.
-
-    Returns:
-    -------
-        overlap_1_2: float
-            Degree of overlapping of cloud1 over cloud2
-
-        overlap_1_2: float
-            Degree of overlapping of cloud2 over cloud1         
 
     """
 
