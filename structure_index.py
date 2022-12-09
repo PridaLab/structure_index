@@ -619,7 +619,7 @@ def draw_graph(overlap_mat, ax, node_cmap = plt.cm.tab10, edge_cmap = plt.cm.Gre
     wdg = nx.draw_networkx(g, pos=nx.circular_layout(g), node_size=800, 
             node_color=node_color, width=np.array(list(widths.values()))*scale_edges, 
             edge_color= np.array(list(widths.values())), edge_cmap =edge_cmap, 
-            arrowsize = 20, edge_vmin = 0, edge_vmax = 0.5, labels = names_dict,
+            arrowsize = 20, edge_vmin = edge_vmin, edge_vmax = edge_vmax, labels = names_dict,
             arrows=True ,connectionstyle="arc3,rad=0.15", with_labels = with_labels, ax=ax)
     
     return wdg
