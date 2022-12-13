@@ -1,6 +1,6 @@
 # Structure Index
 
-Welcome! This repository hosts the implementation for the Structure Index (SI), a graph-based topological metric able to quantify the amount of structure present at the distribution of a given feature over a point cloud in an arbitrary D-dimensional space. See the [BiorXiv preprint](https://www.biorxiv.org/content/10.1101/2022.11.23.517657v1) for specific details and follow [this notebook](https://colab.research.google.com/github/PridaLab/structure_index/blob/main/demos/structure_index_demo.ipynb) for a step by step demo.
+Welcome! This repository hosts the implementation for the Structure Index (SI), a graph-based topological metric able to quantify the amount of structure present at the distribution of a given feature over a point cloud in an arbitrary D-dimensional space. See the [BioRxiv preprint](https://www.biorxiv.org/content/10.1101/2022.11.23.517657v1) for specific details and follow [this notebook](https://colab.research.google.com/github/PridaLab/structure_index/blob/main/demos/structure_index_demo.ipynb) for a step by step demo.
 
 ## The method
 
