@@ -375,7 +375,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         if isinstance(discrete_label,bool):
             discrete_label = [discrete_label for idx in range(label.shape[1])]
         else:
-            assert np.all([isistance(idx, bool) for idx in discrete_label]),\
+            assert np.all([isinstance(idx, bool) for idx in discrete_label]),\
             "Input 'discrete_label' must be boolean or list of booleans."
     else:
         discrete_label = [False for idx in range(label.shape[1])]
