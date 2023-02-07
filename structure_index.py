@@ -569,6 +569,11 @@ def draw_graph(overlap_mat, ax, node_cmap = plt.cm.tab10, edge_cmap = plt.cm.Gre
             list containing name of nodes. If numerical, then nodes colormap 
             will be scale according to it.
 
+        node_color: list of colors (default: False)
+            A list of node colors to be used instead of a colormap. 
+            It must be the same length as nodelist.
+            If not specified it defaults to False (bool) and uses `node_cmap` instead
+
     """
 
     g = nx.from_numpy_matrix(overlap_mat,create_using=nx.DiGraph)
@@ -594,6 +599,11 @@ def draw_graph(overlap_mat, ax, node_cmap = plt.cm.tab10, edge_cmap = plt.cm.Gre
     else:
         edge_vmax = 0.5
 
+    if 'node_color' in kwargs:
+        node_color = kwargs['node_color']
+    else:
+        node_color = False
+
     if 'node_names' in kwargs:
         node_names = kwargs['node_names']
         nodes_info = list(g.nodes(data=True))
@@ -608,11 +618,12 @@ def draw_graph(overlap_mat, ax, node_cmap = plt.cm.tab10, edge_cmap = plt.cm.Gre
         node_val = range(number_nodes)
         with_labels = False
 
-    norm_cmap = matplotlib.colors.Normalize(vmin=np.min(node_val), vmax=np.max(node_val))
-    node_color = list()
-    for ii in range(number_nodes):
-      #colormap possible values = viridis, jet, spectral
-      node_color.append(np.array(node_cmap(norm_cmap(node_val[ii]),bytes=True))/255)
+    if not node_color: # obtain list of colors from cmap
+        norm_cmap = matplotlib.colors.Normalize(vmin=np.min(node_val), vmax=np.max(node_val))
+        node_color = list()
+        for ii in range(number_nodes):
+          #colormap possible values = viridis, jet, spectral
+          node_color.append(np.array(node_cmap(norm_cmap(node_val[ii]),bytes=True))/255)
 
     widths = nx.get_edge_attributes(g, 'weight')
 
