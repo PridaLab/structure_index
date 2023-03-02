@@ -577,7 +577,7 @@ def draw_graph(overlap_mat, ax, node_cmap = plt.cm.tab10, edge_cmap = plt.cm.Gre
     if 'node_size' in kwargs:
         node_size = kwargs['node_size']
     else:
-        node_size = 1000
+        node_size = 800
 
     if 'scale_edges' in kwargs:
         scale_edges = kwargs['scale_edges']
@@ -594,6 +594,11 @@ def draw_graph(overlap_mat, ax, node_cmap = plt.cm.tab10, edge_cmap = plt.cm.Gre
     else:
         edge_vmax = 0.5
 
+    if 'arrow_size' in kwargs:
+        arrow_size = kwargs['arrow_size']
+    else:
+        arrow_size = 20
+
     if 'node_names' in kwargs:
         node_names = kwargs['node_names']
         nodes_info = list(g.nodes(data=True))
@@ -608,6 +613,11 @@ def draw_graph(overlap_mat, ax, node_cmap = plt.cm.tab10, edge_cmap = plt.cm.Gre
         node_val = range(number_nodes)
         with_labels = False
 
+    if 'layout_type' in kwargs:
+        layout_type = kwargs['layout_type']
+    else:
+        layout_type = nx.circular_layout
+
     norm_cmap = matplotlib.colors.Normalize(vmin=np.min(node_val), vmax=np.max(node_val))
     node_color = list()
     for ii in range(number_nodes):
@@ -616,10 +626,10 @@ def draw_graph(overlap_mat, ax, node_cmap = plt.cm.tab10, edge_cmap = plt.cm.Gre
 
     widths = nx.get_edge_attributes(g, 'weight')
 
-    wdg = nx.draw_networkx(g, pos=nx.circular_layout(g), node_size=800, 
+    wdg = nx.draw_networkx(g, pos=layout_type(g), node_size=node_size, 
             node_color=node_color, width=np.array(list(widths.values()))*scale_edges, 
             edge_color= np.array(list(widths.values())), edge_cmap =edge_cmap, 
-            arrowsize = 20, edge_vmin = edge_vmin, edge_vmax = edge_vmax, labels = names_dict,
+            arrowsize = arrow_size, edge_vmin = edge_vmin, edge_vmax = edge_vmax, labels = names_dict,
             arrows=True ,connectionstyle="arc3,rad=0.15", with_labels = with_labels, ax=ax)
     
     return wdg
