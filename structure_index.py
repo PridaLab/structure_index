@@ -570,8 +570,12 @@ def draw_graph(overlap_mat, ax, node_cmap = plt.cm.tab10, edge_cmap = plt.cm.Gre
             will be scale according to it.
 
     """
+    if int(nx.__version__[0])<3:
+        g = nx.from_numpy_matrix(overlap_mat,create_using=nx.DiGraph)
+    else:
+        g = nx.from_numpy_array(overlap_mat,create_using=nx.DiGraph) #version update function
 
-    g = nx.from_numpy_matrix(overlap_mat,create_using=nx.DiGraph)
+
     number_nodes = g.number_of_nodes()
 
     if 'node_size' in kwargs:
