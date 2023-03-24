@@ -577,7 +577,7 @@ def draw_graph(overlap_mat, ax, node_cmap = plt.cm.tab10, edge_cmap = plt.cm.Gre
 
 
     number_nodes = g.number_of_nodes()
-
+    
     if 'node_size' in kwargs:
         node_size = kwargs['node_size']
     else:
