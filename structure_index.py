@@ -416,7 +416,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         num_unique_label =len(np.unique(label[:,dim]))
         if discrete_label[dim]:
             n_bins[dim] = num_unique_label
-        elif n_bins[dim]>num_unique_label:
+        elif n_bins[dim]>=num_unique_label:
              warnings.warn(f"Along column {dim}, input 'label' has less unique "
                              f"values ({num_unique_label}) than specified in "
                             f"'n_bins' ({n_bins[dim]}). Changing 'n_bins' to "
