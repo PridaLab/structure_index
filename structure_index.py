@@ -416,7 +416,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         num_unique_label =len(np.unique(label[:,dim]))
         if discrete_label[dim]:
             n_bins[dim] = num_unique_label
-        elif n_bins[dim]>num_unique_label:
+        elif n_bins[dim]>=num_unique_label:
              warnings.warn(f"Along column {dim}, input 'label' has less unique "
                              f"values ({num_unique_label}) than specified in "
                             f"'n_bins' ({n_bins[dim]}). Changing 'n_bins' to "
@@ -575,14 +575,18 @@ def draw_graph(overlap_mat, ax, node_cmap = plt.cm.tab10, edge_cmap = plt.cm.Gre
             If not specified it defaults to False (bool) and uses `node_cmap` instead
 
     """
+    if int(nx.__version__[0])<3:
+        g = nx.from_numpy_matrix(overlap_mat,create_using=nx.DiGraph)
+    else:
+        g = nx.from_numpy_array(overlap_mat,create_using=nx.DiGraph) #version update function
 
-    g = nx.from_numpy_matrix(overlap_mat,create_using=nx.DiGraph)
+
     number_nodes = g.number_of_nodes()
-
+    
     if 'node_size' in kwargs:
         node_size = kwargs['node_size']
     else:
-        node_size = 1000
+        node_size = 800
 
     if 'scale_edges' in kwargs:
         scale_edges = kwargs['scale_edges']
@@ -604,6 +608,11 @@ def draw_graph(overlap_mat, ax, node_cmap = plt.cm.tab10, edge_cmap = plt.cm.Gre
     else:
         node_color = False
 
+    if 'arrow_size' in kwargs:
+        arrow_size = kwargs['arrow_size']
+    else:
+        arrow_size = 20
+
     if 'node_names' in kwargs:
         node_names = kwargs['node_names']
         nodes_info = list(g.nodes(data=True))
@@ -618,6 +627,11 @@ def draw_graph(overlap_mat, ax, node_cmap = plt.cm.tab10, edge_cmap = plt.cm.Gre
         node_val = range(number_nodes)
         with_labels = False
 
+    if 'layout_type' in kwargs:
+        layout_type = kwargs['layout_type']
+    else:
+        layout_type = nx.circular_layout
+        
     if not node_color: # obtain list of colors from cmap
         norm_cmap = matplotlib.colors.Normalize(vmin=np.min(node_val), vmax=np.max(node_val))
         node_color = list()
@@ -627,10 +641,10 @@ def draw_graph(overlap_mat, ax, node_cmap = plt.cm.tab10, edge_cmap = plt.cm.Gre
 
     widths = nx.get_edge_attributes(g, 'weight')
 
-    wdg = nx.draw_networkx(g, pos=nx.circular_layout(g), node_size=800, 
+    wdg = nx.draw_networkx(g, pos=layout_type(g), node_size=node_size, 
             node_color=node_color, width=np.array(list(widths.values()))*scale_edges, 
             edge_color= np.array(list(widths.values())), edge_cmap =edge_cmap, 
-            arrowsize = 20, edge_vmin = edge_vmin, edge_vmax = edge_vmax, labels = names_dict,
+            arrowsize = arrow_size, edge_vmin = edge_vmin, edge_vmax = edge_vmax, labels = names_dict,
             arrows=True ,connectionstyle="arc3,rad=0.15", with_labels = with_labels, ax=ax)
     
     return wdg
