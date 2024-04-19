@@ -14,11 +14,11 @@ from sklearn.metrics import pairwise_distances
 from sklearn.manifold import Isomap
 from decorator import decorator
 from tqdm.auto import tqdm
-
 import networkx as nx
 # overlap_options = ['one_third','continuity']
 # graph_options = ['binary', 'weighted']
 distance_options = ['euclidean','geodesic']
+continuity_kernel_options = ['gaussian']
 
 def validate_args_types(**decls):
     """Decorator to check argument types.
@@ -241,7 +241,8 @@ def cloud_overlap_neighbors(cloud1, cloud2, k, distance_metric):
 
 @validate_args_types(data=np.ndarray, label=np.ndarray, n_bins=(int,np.integer,list), 
     dims=(type(None),list), distance_metric=str, n_neighbors=(int,np.integer),
-    num_shuffles=(int,np.integer), discrete_label=(list,bool), verbose=bool)
+    num_shuffles=(int,np.integer), discrete_label=(list,bool), continuity_kernel=(type(None),str,np.ndarray), 
+    verbose=bool)
 
 def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     '''compute structure index main function
@@ -286,6 +287,10 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         num_shuffles: int (default: 100)
             Number of shuffles to be computed. Note it must fall within the 
             interval [0, np.inf).
+        
+        continuity_kernel: None/str/list/np.ndarray (default: None)
+            Kernel to apply to the overlapping matrix to evaluate continuity
+            of the feature.
 
         verbose: boolean (default: False)
             Boolean controling whether or not to print internal process.
@@ -348,7 +353,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     if 'distance_metric' in kwargs:
         distance_metric = kwargs['distance_metric']
         assert distance_metric in distance_options, f"Invalid input "+\
-            "'distance_metric'. Valid options are {distance_options}."
+            f"'distance_metric'. Valid options are {distance_options}."
     else:
         distance_metric = 'euclidean'
     #ix) n_neighbors input
@@ -392,6 +397,48 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         verbose = kwargs['verbose']
     else:
         verbose = False
+    #xiii) continuit_kernel
+    if 'continuity_kernel' in kwargs:
+        continuity_kernel = kwargs['continuity_kernel']
+        #continuity kernel for vectorial features not implemented
+        if continuity_kernel and label.shape[1]>1:
+            warnings.warn(f"'continuity_kernel' is not currently supported for "
+                        f"vectorial features. Disabling it (continuity agnostic).")
+            continuity_kernel = None
+
+        if isinstance(continuity_kernel, str):
+            assert continuity_kernel in continuity_kernel_options, f"Invalid input "+\
+                f"'continuity_kernel'. Valid options are {continuity_kernel_options}."
+            #continuity kernel for discrete labels not implemented.
+            if continuity_kernel and discrete_label:
+                warnings.warn(f"'continuity_kernel' for discrete labels assumes ordered unique labels.")
+
+            if continuity_kernel=='gaussian':
+                #create gaussian kernel
+                gaus = lambda x,x0,sig: np.exp(-(((x-x0)**2)/(2*sig**2)));
+                if 'gaussian_sigma' in kwargs:
+                    sigma = kwargs['gaussian_sigma']
+                else:
+                    sigma = 0.5*n_bins[0] / (2 * np.sqrt(2 * np.log(2)))
+                if 'continuity_lambda' in kwargs:
+                    continuity_lambda = kwargs['continuity_lambda']
+                else: continuity_lambda = 0.1;
+                kernel_gauss = np.zeros((n_bins[0], n_bins[0]))*np.nan
+                for node in range(n_bins[0]):
+                    node_gauss = 1 - gaus(np.arange(n_bins[0]),node,sigma)
+                    kernel_gauss[node,:] = (n_bins[0]-1)*node_gauss/(continuity_lambda*np.nansum(node_gauss))
+                continuity_kernel = kernel_gauss
+
+        elif isinstance(continuity_kernel, np.ndarray):
+            assert continuity_kernel.ndim==2, "'continuity_kernel', must be a square matrix with "+\
+                                                        "shape equal to the number of bins"
+            assert continuity_kernel.shape[0]==continuity_kernel.shape[1], "'continuity_kernel', must be a square matrix with "+\
+                                                        "shape equal to the number of bins"
+            assert continuity_kernel.shape[0]==n_bins[0], "'continuity_kernel' shape does not match "+\
+                                                        "number of bins"
+    else:
+        continuity_kernel = None
+
     #__________________________________________________________________________
     #|                                                                        |#
     #|                           1. PREPROCESS DATA                           |#
@@ -416,9 +463,9 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         num_unique_label =len(np.unique(label[:,dim]))
         if discrete_label[dim]:
             n_bins[dim] = num_unique_label
-        elif n_bins[dim]>=num_unique_label:
-             warnings.warn(f"Along column {dim}, input 'label' has less unique "
-                             f"values ({num_unique_label}) than specified in "
+        elif n_bins[dim]>num_unique_label:
+             warnings.warn(f"Along column {dim}, input 'label' has less or the same unique "
+                            f"values ({num_unique_label}) than specified in "
                             f"'n_bins' ({n_bins[dim]}). Changing 'n_bins' to "
                             f"{num_unique_label} and setting it to discrete.")
              n_bins[dim] = num_unique_label
@@ -474,6 +521,12 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     unique_bin_label = np.unique(bin_label[~np.isnan(bin_label)])
     if verbose:
             print('\b\b\b: Done')
+
+    #e) delete bins from continuity_kernel if applicable
+    if not isinstance(continuity_kernel, type(None)):
+        continuity_kernel = np.delete(continuity_kernel, del_labels, 0)
+        continuity_kernel = np.delete(continuity_kernel, del_labels, 1)
+
     #__________________________________________________________________________
     #|                                                                        |#
     #|                       2. COMPUTE STRUCTURE INDEX                       |#
@@ -493,12 +546,13 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
             overlap_mat[b,a] = overlap_b_a
             if verbose: bar.update(1)  
     if verbose: bar.close()
-
+    #i.bis) Apply continuity kernel if applicable
+    if not isinstance(continuity_kernel, type(None)):
+        overlap_mat = continuity_kernel*overlap_mat
     #ii). compute structure_index (SI)
     if verbose: print('Computing structure index...', sep='', end = '')
     degree_nodes = np.nansum(overlap_mat, axis=1)
-    SI = 1 - np.mean(degree_nodes)/(num_bins-1)
-    SI = 2*(SI-0.5)
+    SI = 1 - 2*np.nansum(degree_nodes)/(num_bins*(num_bins-1))
     SI = np.max([SI, 0])
     if verbose: print(f"\b\b\b: {SI:.2f}")
     #iii). Shuffling
@@ -517,11 +571,12 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
                                             neighborhood_size, distance_metric)
                 shuf_overlap_mat[a,b] = overlap_a_b
                 shuf_overlap_mat[b,a] = overlap_b_a
-
+        #iii) apply continuity kernel
+        if not isinstance(continuity_kernel, type(None)):
+            shuf_overlap_mat = continuity_kernel*shuf_overlap_mat
         #iii) compute structure_index (SI)
         degree_nodes = np.nansum(shuf_overlap_mat, axis=1)
-        shuf_SI[s_idx] = 1 - np.mean(degree_nodes)/(num_bins-1)
-        shuf_SI[s_idx] = 2*(shuf_SI[s_idx]-0.5)
+        shuf_SI[s_idx] = 1 - 2*np.nansum(degree_nodes)/(num_bins*(num_bins-1))
         shuf_SI[s_idx] = np.max([shuf_SI[s_idx], 0])
         if verbose: bar.update(1) 
     if verbose: bar.close()
