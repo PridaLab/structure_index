@@ -401,7 +401,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     if 'continuity_kernel' in kwargs:
         continuity_kernel = kwargs['continuity_kernel']
         #continuity kernel for vectorial features not implemented
-        if continuity_kernel and label.shape[1]>1:
+        if np.all(continuity_kernel) and label.shape[1]>1:
             warnings.warn(f"'continuity_kernel' is not currently supported for "
                         f"vectorial features. Disabling it (continuity agnostic).")
             continuity_kernel = None
@@ -420,13 +420,13 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
                     sigma = kwargs['gaussian_sigma']
                 else:
                     sigma = 0.5*n_bins[0] / (2 * np.sqrt(2 * np.log(2)))
-                if 'continuity_lambda' in kwargs:
-                    continuity_lambda = kwargs['continuity_lambda']
-                else: continuity_lambda = 0.1;
+                if 'continuity_alpha' in kwargs:
+                    continuity_alpha = kwargs['continuity_alpha']
+                else: continuity_alpha = 0.1;
                 kernel_gauss = np.zeros((n_bins[0], n_bins[0]))*np.nan
                 for node in range(n_bins[0]):
                     node_gauss = 1 - gaus(np.arange(n_bins[0]),node,sigma)
-                    kernel_gauss[node,:] = (n_bins[0]-1)*node_gauss/(continuity_lambda*np.nansum(node_gauss))
+                    kernel_gauss[node,:] = (n_bins[0]-1)*node_gauss/(continuity_alpha*np.nansum(node_gauss))
                 continuity_kernel = kernel_gauss
 
         elif isinstance(continuity_kernel, np.ndarray):
@@ -463,7 +463,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         num_unique_label =len(np.unique(label[:,dim]))
         if discrete_label[dim]:
             n_bins[dim] = num_unique_label
-        elif n_bins[dim]>num_unique_label:
+        elif n_bins[dim]>=num_unique_label:
              warnings.warn(f"Along column {dim}, input 'label' has less or the same unique "
                             f"values ({num_unique_label}) than specified in "
                             f"'n_bins' ({n_bins[dim]}). Changing 'n_bins' to "
