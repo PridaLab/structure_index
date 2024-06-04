@@ -472,6 +472,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         bin_label[bin_label==unique_bin_label[del_idx]] = np.nan
     #d) re-computed valid bins
     unique_bin_label = np.unique(bin_label[~np.isnan(bin_label)])
+    if len(unique_bin_label)==1: return np.nan, (np.nan,np.nan), np.nan, np.nan
     if verbose:
             print('\b\b\b: Done')
     #__________________________________________________________________________
