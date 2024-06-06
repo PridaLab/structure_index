@@ -20,7 +20,7 @@ import networkx as nx
 distance_options = ['euclidean','geodesic']
 continuity_kernel_options = ['gaussian']
 
-def validate_args_types(**decls):
+def _validate_args_types(**decls):
     """Decorator to check argument types.
 
     Usage:
@@ -49,7 +49,7 @@ def validate_args_types(**decls):
     return wrapper
 
 
-def filter_noisy_outliers(data):
+def _filter_noisy_outliers(data):
     D = pairwise_distances(data)
     np.fill_diagonal(D, np.nan)
     nn_dist = np.sum(D < np.nanpercentile(D,1), axis=1) - 1
@@ -57,7 +57,7 @@ def filter_noisy_outliers(data):
     return noiseIdx
 
 
-def meshgrid2(arrs):
+def _meshgrid2(arrs):
     #arrs: tuple with np.arange of shape of all dimensions
     lens = list(map(len, arrs))
     dim = len(arrs)
@@ -76,7 +76,7 @@ def meshgrid2(arrs):
     return tuple(ans)
 
 
-def create_ndim_grid(label, n_bins, min_label, max_label, discrete_label):
+def _create_ndim_grid(label, n_bins, min_label, max_label, discrete_label):
     
     ndims = label.shape[1]
     grid_edges = list()
@@ -92,7 +92,7 @@ def create_ndim_grid(label, n_bins, min_label, max_label, discrete_label):
     #Generate the grid containing the indices of the points of the label and 
     #the coordinates as the mid point of edges
     grid = np.empty([e.shape[0] for e in grid_edges], object)
-    mesh = meshgrid2(tuple([np.arange(s) for s in grid.shape]))
+    mesh = _meshgrid2(tuple([np.arange(s) for s in grid.shape]))
     meshIdx = np.vstack([col.ravel() for col in mesh]).T
     coords = np.zeros(meshIdx.shape+(3,))
     grid = grid.ravel()
@@ -111,15 +111,15 @@ def create_ndim_grid(label, n_bins, min_label, max_label, discrete_label):
     return grid, coords
 
 
-def cloud_overlap_radius(cloud1, cloud2, r, distance_metric):
+def _compute_overlap_radius(cloud1, cloud2, r, distance_metric):
     """Compute overlapping between two clouds of points.
     
     Parameters:
     ----------
-        cloud1: numpy 2d array of shape [n_samples_1,n_features]
+        cloud1: numpy 2d array of shape [n_samples_1,n_dimensions]
             Array containing the cloud of points 1
 
-        cloud2: numpy 2d array of shape [n_samples_2,n_features]
+        cloud2: numpy 2d array of shape [n_samples_2,n_dimensions]
             Array containing the cloud of points 2
 
         k: int
@@ -174,15 +174,15 @@ def cloud_overlap_radius(cloud1, cloud2, r, distance_metric):
     return overlap_1_2, overlap_2_1
 
 
-def cloud_overlap_neighbors(cloud1, cloud2, k, distance_metric):
+def _compute_overlap_neighbors(cloud1, cloud2, k, distance_metric):
     """Compute overlapping between two clouds of points.
     
     Parameters:
     ----------
-        cloud1: numpy 2d array of shape [n_samples_1,n_features]
+        cloud1: numpy 2d array of shape [n_samples_1,n_dimensions]
             Array containing the cloud of points 1
 
-        cloud2: numpy 2d array of shape [n_samples_2,n_features]
+        cloud2: numpy 2d array of shape [n_samples_2,n_dimensions]
             Array containing the cloud of points 2
 
         k: int
@@ -239,12 +239,195 @@ def cloud_overlap_neighbors(cloud1, cloud2, k, distance_metric):
     return overlap_1_2, overlap_2_1
 
 
-@validate_args_types(data=np.ndarray, label=np.ndarray, n_bins=(int,np.integer,list), 
-    dims=(type(None),list), distance_metric=str, n_neighbors=(int,np.integer),
-    num_shuffles=(int,np.integer), discrete_label=(list,bool), continuity_kernel=(type(None),str,np.ndarray), 
-    verbose=bool)
+def _compute_overlap_perc_neighbors(cloud1, cloud2, perc, distance_metric):
+    """Compute overlapping between two clouds of points.
+    
+    Parameters:
+    ----------
+        cloud1: numpy 2d array of shape [n_samples_1,n_dimensions]
+            Array containing the cloud of points 1
 
-def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
+        cloud2: numpy 2d array of shape [n_samples_2,n_dimensions]
+            Array containing the cloud of points 2
+
+        k: int
+            Number of neighbors used to compute the overlapping between 
+            bin-groups. This parameter controls the tradeoff between local 
+            and global structure.
+
+        distance_metric: str
+            Type of distance used to compute the closest n_neighbors. See 
+            'distance_options' for currently supported distances.
+
+        overlap_method: str (default: 'one_third')
+            Type of method use to compute the overlapping between bin-groups. 
+            See 'overlap_options' for currently supported methods.
+
+    Returns:
+    -------
+        overlap_1_2: float
+            Degree of overlapping of cloud1 over cloud2
+
+        overlap_1_2: float
+            Degree of overlapping of cloud2 over cloud1         
+
+    """
+    #Stack both clouds
+    cloud_all = np.vstack((cloud1, cloud2)).astype('float32')
+    idx_sep = cloud1.shape[0]
+    #Create cloud label
+    cloud_label = np.hstack((np.ones(cloud1.shape[0]), np.ones(cloud2.shape[0])*2))
+    max_k = np.ceil(cloud_label.shape[0]*perc/100).astype(int)
+    #Compute k neighbours graph
+    if distance_metric == 'euclidean':
+        if use_fast:
+            index = faiss.IndexFlatL2(cloud_all.shape[1])   # build the index
+            index.add(cloud_all) # add vectors to the index
+            _, I = index.search(cloud_all, max_k+1)
+            I = I[:,1:]
+        else:
+            knn = NearestNeighbors(n_neighbors=max_k, metric="minkowski", p=2).fit(cloud_all)
+            I = knn.kneighbors(return_distance=False)
+
+    elif distance_metric == 'geodesic':
+        model_iso = Isomap(n_components = 1)
+        emb = model_iso.fit_transform(cloud_all)
+        dist_mat = model_iso.dist_matrix_
+        knn = NearestNeighbors(n_neighbors=max_k, metric="precomputed").fit(dist_mat)
+        I = knn.kneighbors(return_distance=False)
+
+    #Compute overlapping
+        #total fraction of neighbors that belong to the other cloud
+    k_cloud1 = np.ceil(cloud1.shape[0]*perc/100).astype(int)
+    overlap_1_2 = np.sum(I[:idx_sep,:k_cloud1]>=idx_sep)/(cloud1.shape[0]*k_cloud1)
+
+    k_cloud2 = np.ceil(cloud2.shape[0]*perc/100).astype(int)
+    overlap_2_1 = np.sum(I[idx_sep:,:k_cloud2]<idx_sep)/(cloud2.shape[0]*k_cloud2)
+
+    return overlap_1_2, overlap_2_1
+
+
+def _generate_gaussian_continuity_kernel(size, sigma):
+    gaus = lambda x,x0,sig: np.exp(-(((x-x0)**2)/(2*sig**2)));
+    kernel_gauss = np.zeros((size, size))*np.nan
+    for node in range(size):
+        node_gauss = 1 - gaus(np.arange(size),node,sigma)
+        kernel_gauss[node,:] = (size-1)*node_gauss/np.nansum(node_gauss)
+    return kernel_gauss
+
+
+#handle inputs:
+def _handle_n_bins_input(n_bins, label):
+    if isinstance(n_bins, int) or isinstance(n_bins, np.integer):
+        assert n_bins>1,\
+        "Input 'n_bins' must be an int or list of int larger than 1."
+        n_bins = [n_bins for nb in range(label.shape[1])]
+    elif isinstance(n_bins, list):
+        assert np.all([nb>1 for nb in n_bins]),\
+        "Input 'n_bins' must be an int or list of int larger than 1."
+    return n_bins
+
+def _handle_distance_metric_input(kwargs):
+    if 'distance_metric' in kwargs:
+        distance_metric = kwargs['distance_metric']
+        assert distance_metric in distance_options, f"Invalid input "+\
+            f"'distance_metric'. Valid options are {distance_options}."
+    else:
+        distance_metric = 'euclidean'
+    return distance_metric
+
+def _handle_neighborhood_size_input(kwargs):
+    if ('n_neighbors' in kwargs) and ('radius' in kwargs):
+        raise ValueError("Both n_neighbors and radius provided. Please only"+\
+                                                                " specify one")
+    if 'radius' in kwargs:
+        neighborhood_size = kwargs['radius']
+        assert neighborhood_size>0, "Input 'radius' must be larger than 0"
+        compute_overlap = _compute_overlap_radius
+    elif 'perc_neighbors' in kwargs:
+        neighborhood_size = kwargs['perc_neighbors']
+        assert neighborhood_size>0, "Input 'perc_neighbors' must be larger"+\
+                                                                "than 0."
+        assert neighborhood_size<=100, "Input 'perc_neighbors' must be smaller"+\
+                                                            "or equal to 100."
+        compute_overlap = _compute_overlap_perc_neighbors
+    else:
+        if 'n_neighbors' in kwargs:
+            neighborhood_size = kwargs['n_neighbors']
+            assert neighborhood_size>2, "Input 'n_neighbors' must be larger"+\
+                                                                    "than 2."
+        else:
+            neighborhood_size = 15
+        compute_overlap = _compute_overlap_neighbors
+
+
+    return neighborhood_size, compute_overlap
+
+def _handle_discrete_label_input(kwargs, label):
+    if 'discrete_label' in kwargs:
+        discrete_label = kwargs['discrete_label']
+        if isinstance(discrete_label,bool):
+            discrete_label = [discrete_label for idx in range(label.shape[1])]
+        else:
+            assert np.all([isinstance(idx, bool) for idx in discrete_label]),\
+            "Input 'discrete_label' must be boolean or list of booleans."
+    else:
+        discrete_label = [False for idx in range(label.shape[1])]
+
+    return discrete_label
+
+def _handle_continuity_kernel_input(kwargs, label, discrete_label, n_bins):
+    total_n_bins = np.prod(n_bins)
+    if 'continuity_kernel' not in kwargs: return np.ones((total_n_bins, total_n_bins))
+    #continuity kernel for vectorial labels not implemented
+    if label.shape[1]>1:
+        warnings.warn(f"'continuity_kernel' is not currently supported for "
+                    f"vectorial labels. Disabling it (continuity agnostic).")
+        return np.ones((total_n_bins, total_n_bins))
+
+    if isinstance(kwargs['continuity_kernel'], type(None)): return np.ones((total_n_bins, total_n_bins))
+
+    #continuity kernel for discrete labels
+    if np.any(discrete_label):
+        warnings.warn(f"'continuity_kernel' for discrete labels assumes ordered unique labels.")
+
+    #process valid inputs
+    continuity_kernel = kwargs['continuity_kernel']
+    if isinstance(continuity_kernel, str):
+        assert continuity_kernel in continuity_kernel_options, f"Invalid input "+\
+            f"'continuity_kernel'. Valid options are {continuity_kernel_options}."
+        if continuity_kernel=='gaussian':
+
+            if 'continuity_alpha' in kwargs:
+                continuity_alpha = kwargs['continuity_alpha']
+            else: 
+                continuity_alpha = 1.2;
+
+            if 'gaussian_sigma' in kwargs:
+                sigma = kwargs['gaussian_sigma']
+            else:
+                sigma = 0.5*total_n_bins / (2 * np.sqrt(2 * np.log(2)))
+            #create gaussian kernel
+            continuity_kernel = _generate_gaussian_continuity_kernel(total_n_bins, sigma)
+            continuity_kernel = continuity_kernel**continuity_alpha
+            # continuity_kernel = continuity_kernel/np.sum(continuity_kernel,axis=1)
+
+    elif isinstance(continuity_kernel, np.ndarray):
+        assert continuity_kernel.ndim==2, "'continuity_kernel', must be a square matrix with "+\
+                                                    "shape equal to the number of bins"
+        assert continuity_kernel.shape[0]==continuity_kernel.shape[1], "'continuity_kernel', must be a square matrix with "+\
+                                                    "shape equal to the number of bins"
+        assert continuity_kernel.shape[0]==total_n_bins, "'continuity_kernel' shape does not match "+\
+                                                    "number of bins"
+
+    return continuity_kernel
+
+
+@_validate_args_types(data=np.ndarray, label=np.ndarray, n_bins=(int,np.integer,list), 
+    distance_metric=str, n_neighbors=(int,np.integer), num_shuffles=(int,np.integer), 
+    discrete_label=(list,bool), continuity_kernel=(type(None),str,np.ndarray), verbose=bool)
+
+def compute_structure_index(data, label, n_bins=10, **kwargs):
     '''compute structure index main function
     
     Parameters:
@@ -254,21 +437,16 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
 
         label: numpy 2d array of shape [n_samples,n_features]
             Array containing the labels of the data. It can either be a 
-            column vector (scalar feature) or a 2D array (vectorial feature)
+            column vector (scalar label) or a 2D array (vectorial label)
         
     Optional parameters:
     --------------------
         n_bins: integer (default: 10)
             number of bin-groups the label will be divided into (they will 
-            become nodes on the graph). For vectorial features, if one wants 
+            become nodes on the graph). For vectorial labels, if one wants 
             different number of bins for each entry then specify n_bins as a 
             list (i.e. [10,20,5]). Note that it will be ignored if 
             'discrete_label' is set to True.
-
-        dims: list of integers or None (default: None)
-            list of integers containing the dimensions of data along which the 
-            structure index will be computed. Provide None to compute it along 
-            all dimensions of data.
         
         distance_metric: str (default: 'euclidean')
             Type of distance used to compute the closest n_neighbors. See 
@@ -279,6 +457,11 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
             bin-groups. This parameter controls the tradeoff between local and 
             global structure.
 
+        radius: float (default: None)
+            One can specify raidus instead of n_neighbors to compute the 
+            overlapping between bin-groups. In such case, all points within
+            that vicinity will be considered neighbors.
+
         discrete_label: boolean (default: False)
             If the label is discrete, then one bin-group will be created for 
             each discrete value it takes. Note that if set to True, 'n_bins' 
@@ -288,9 +471,9 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
             Number of shuffles to be computed. Note it must fall within the 
             interval [0, np.inf).
         
-        continuity_kernel: None/str/list/np.ndarray (default: None)
+        continuity_kernel: None/str//np.ndarray (default: None)
             Kernel to apply to the overlapping matrix to evaluate continuity
-            of the feature.
+            of the label.
 
         verbose: boolean (default: False)
             Boolean controling whether or not to print internal process.
@@ -301,13 +484,16 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         SI: float
             structure index
 
-        bin_label: tuple
+        process_info: tuple
             Tuple containing:
                 [0] Array indicating the bin-group to which each data point has 
                     been assigned.
-                [1] Array indicating feature limits of each bin-group. Size is
+
+                [1] Array indicating label limits of each bin-group. Size is
                 [number_bin_groups, n_features, 3] where the last dimension 
                 contains [bin_st, bin_center, bin_en]
+
+                [2] Continuity kernel
 
         overlap_mat: numpy 2d array of shape [n_bins, n_bins]
             Array containing the overlapping between each pair of bin-groups.
@@ -330,124 +516,42 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     #Note input type validity is handled by the decorator. Here the values 
     #themselves are being checked.
     #i) data input
-    assert data.ndim==2, "Input 'data' must be a 2D numpy ndarray with shape"+\
-        " of samples and m the number of dimensions."
+    assert data.ndim==2, "Input 'data' must be a 2D numpy ndarray with "+\
+                                    "shape [num_samples, num_dimensions]."
     #ii) label input
     if label.ndim==1:
         label = label.reshape(-1,1)
-    assert label.ndim==2,\
-        "label must be a 1D or 2D array."
+    assert label.ndim==2, "label must be a 1D or 2D array."
     #iii) n_bins input
-    if isinstance(n_bins, int) or isinstance(n_bins, np.integer):
-        assert n_bins>1,\
-        "Input 'n_bins' must be an int or list of int larger than 1."
-        n_bins = [n_bins for nb in range(label.shape[1])]
-    elif isinstance(n_bins, list):
-        assert np.all([nb>1 for nb in n_bins]),\
-        "Input 'n_bins' must be an int or list of int larger than 1."
+    n_bins = _handle_n_bins_input(n_bins, label)
+    #iv) distance_metric
+    distance_metric = _handle_distance_metric_input(kwargs)
 
-    #iv) dims input
-    if isinstance(dims, type(None)): #if dims is None, then take all dimensions
-        dims = list(range(data.shape[1]))
-    #v) distance_metric
-    if 'distance_metric' in kwargs:
-        distance_metric = kwargs['distance_metric']
-        assert distance_metric in distance_options, f"Invalid input "+\
-            f"'distance_metric'. Valid options are {distance_options}."
-    else:
-        distance_metric = 'euclidean'
-    #ix) n_neighbors input
-    if ('n_neighbors' in kwargs) and ('radius' in kwargs):
-        raise ValueError("Both n_neighbors and radius provided. Please only"+\
-                                                                " specify one")
+    #v) n_neighbors input
+    neighborhood_size, compute_overlap = _handle_neighborhood_size_input(kwargs)
 
-    if 'radius' in kwargs:
-        neighborhood_size = kwargs['radius']
-        assert neighborhood_size>0, "Input 'radius' must be larger than 0"
-        cloud_overlap = cloud_overlap_radius
-    else:
-        if 'n_neighbors' in kwargs:
-            neighborhood_size = kwargs['n_neighbors']
-            assert neighborhood_size>2, "Input 'n_neighbors' must be larger"+\
-                                                                    "than 2."
-        else:
-            neighborhood_size = 15
-        cloud_overlap = cloud_overlap_neighbors
+    #vi) discrete_label input
+    discrete_label = _handle_discrete_label_input(kwargs, label)
 
-    #x) discrete_label input
-    if 'discrete_label' in kwargs:
-        discrete_label = kwargs['discrete_label']
-        if isinstance(discrete_label,bool):
-            discrete_label = [discrete_label for idx in range(label.shape[1])]
-        else:
-            assert np.all([isinstance(idx, bool) for idx in discrete_label]),\
-            "Input 'discrete_label' must be boolean or list of booleans."
-    else:
-        discrete_label = [False for idx in range(label.shape[1])]
-
-    #xi) num_shuffles input
+    #vii) num_shuffles input
     if 'num_shuffles' in kwargs:
         num_shuffles = kwargs['num_shuffles']
         assert num_shuffles>=0, "Input 'num_shuffles must fall within the "+\
                                                         "interval [0, np.inf)"
     else:
         num_shuffles = 100
-    #xii) verbose input
+    #viii) verbose input
     if 'verbose' in kwargs:
         verbose = kwargs['verbose']
     else:
         verbose = False
-    #xiii) continuit_kernel
-    if 'continuity_kernel' in kwargs:
-        continuity_kernel = kwargs['continuity_kernel']
-        #continuity kernel for vectorial features not implemented
-        if np.all(continuity_kernel) and label.shape[1]>1:
-            warnings.warn(f"'continuity_kernel' is not currently supported for "
-                        f"vectorial features. Disabling it (continuity agnostic).")
-            continuity_kernel = None
-
-        if isinstance(continuity_kernel, str):
-            assert continuity_kernel in continuity_kernel_options, f"Invalid input "+\
-                f"'continuity_kernel'. Valid options are {continuity_kernel_options}."
-            #continuity kernel for discrete labels not implemented.
-            if continuity_kernel and discrete_label:
-                warnings.warn(f"'continuity_kernel' for discrete labels assumes ordered unique labels.")
-
-            if continuity_kernel=='gaussian':
-                #create gaussian kernel
-                gaus = lambda x,x0,sig: np.exp(-(((x-x0)**2)/(2*sig**2)));
-                if 'gaussian_sigma' in kwargs:
-                    sigma = kwargs['gaussian_sigma']
-                else:
-                    sigma = 0.5*n_bins[0] / (2 * np.sqrt(2 * np.log(2)))
-                if 'continuity_alpha' in kwargs:
-                    continuity_alpha = kwargs['continuity_alpha']
-                else: continuity_alpha = 0.1;
-                kernel_gauss = np.zeros((n_bins[0], n_bins[0]))*np.nan
-                for node in range(n_bins[0]):
-                    node_gauss = 1 - gaus(np.arange(n_bins[0]),node,sigma)
-                    kernel_gauss[node,:] = (n_bins[0]-1)*node_gauss/(continuity_alpha*np.nansum(node_gauss))
-                continuity_kernel = kernel_gauss
-
-        elif isinstance(continuity_kernel, np.ndarray):
-            assert continuity_kernel.ndim==2, "'continuity_kernel', must be a square matrix with "+\
-                                                        "shape equal to the number of bins"
-            assert continuity_kernel.shape[0]==continuity_kernel.shape[1], "'continuity_kernel', must be a square matrix with "+\
-                                                        "shape equal to the number of bins"
-            assert continuity_kernel.shape[0]==n_bins[0], "'continuity_kernel' shape does not match "+\
-                                                        "number of bins"
-    else:
-        continuity_kernel = None
 
     #__________________________________________________________________________
     #|                                                                        |#
     #|                           1. PREPROCESS DATA                           |#
     #|________________________________________________________________________|#
-    #i).Keep only desired dims
-    data = data[:,dims]
     if data.ndim == 1: #if left with 1 dim, keep the 2D shape
         data = data.reshape(-1,1)
-
     #ii).Delete nan values from label and data
     data_nans = np.any(np.isnan(data), axis = 1)
     label_nans = np.any(np.isnan(label), axis = 1)
@@ -475,7 +579,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     if 'min_label' in kwargs:
         min_label = kwargs['min_label']
         if not isinstance(min_label, list):
-            min_label = [min_label for nb in range(label.shape[1])]
+            min_label = [min_label for d in range(label.shape[1])]
     else:
         min_label = np.percentile(label,5, axis = 0)
         if any(discrete_label): 
@@ -483,7 +587,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     if 'max_label' in kwargs:
         max_label = kwargs['max_label']
         if not isinstance(max_label, list):
-            max_label = [max_label for nb in range(label.shape[1])]
+            max_label = [max_label for d in range(label.shape[1])]
     else:
         max_label = np.percentile(label,95, axis = 0)
         if any(discrete_label):
@@ -493,7 +597,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         label[np.where(label[:,ld]<min_label[ld])[0],ld] = min_label[ld]+0.00001
         label[np.where(label[:,ld]>max_label[ld])[0],ld] = max_label[ld]-0.00001
 
-    grid, coords = create_ndim_grid(label, n_bins, min_label, max_label, discrete_label)
+    grid, coords = _create_ndim_grid(label, n_bins, min_label, max_label, discrete_label)
     bin_label = np.zeros(label.shape[0],).astype(int)*np.nan
     for b in range(len(grid)):
         bin_label[grid[b]] = b
@@ -501,9 +605,13 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     #iv). Clean outliers from each bin-groups if specified in kwargs
     if 'filter_noise' in kwargs and kwargs['filter_noise']:
         for l in range(len(grid)):
-            noise_idx = filter_noisy_outliers(data[bin_label==l,:])
+            noise_idx = _filter_noisy_outliers(data[bin_label==l,:])
             noise_idx = np.where(bin_label==l)[0][noise_idx]
             bin_label[noise_idx] = 0
+
+
+    #v). Create continuity kernel
+    continuity_kernel = _handle_continuity_kernel_input(kwargs, label, discrete_label, n_bins)
 
     #v). Discard outlier bin-groups (n_points < n_neighbors)
     #a) Compute number of points in each bin-group
@@ -519,6 +627,7 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         bin_label[bin_label==unique_bin_label[del_idx]] = np.nan
     #d) re-computed valid bins
     unique_bin_label = np.unique(bin_label[~np.isnan(bin_label)])
+    num_bins = len(unique_bin_label)
     if verbose:
             print('\b\b\b: Done')
 
@@ -526,13 +635,12 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     if not isinstance(continuity_kernel, type(None)):
         continuity_kernel = np.delete(continuity_kernel, del_labels, 0)
         continuity_kernel = np.delete(continuity_kernel, del_labels, 1)
-
+    continuity_kernel = continuity_kernel*(num_bins-1)/np.sum(continuity_kernel,axis=1)
     #__________________________________________________________________________
     #|                                                                        |#
     #|                       2. COMPUTE STRUCTURE INDEX                       |#
     #|________________________________________________________________________|#
     #i). compute overlap between bin-groups pairwise
-    num_bins = len(unique_bin_label)
     overlap_mat = np.zeros((num_bins, num_bins))*np.nan
     if verbose: 
         bar=tqdm(total=int((num_bins**2-num_bins)/2), desc='Computing overlap')
@@ -540,21 +648,20 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
         A = data[bin_label==unique_bin_label[a]]
         for b in range(a+1, num_bins):
             B = data[bin_label==unique_bin_label[b]]
-            overlap_a_b, overlap_b_a = cloud_overlap(A,B,neighborhood_size, 
+            overlap_a_b, overlap_b_a = compute_overlap(A,B,neighborhood_size, 
                                                                 distance_metric)
             overlap_mat[a,b] = overlap_a_b
             overlap_mat[b,a] = overlap_b_a
             if verbose: bar.update(1)  
     if verbose: bar.close()
-    #i.bis) Apply continuity kernel if applicable
-    if not isinstance(continuity_kernel, type(None)):
-        overlap_mat = continuity_kernel*overlap_mat
+
     #ii). compute structure_index (SI)
     if verbose: print('Computing structure index...', sep='', end = '')
-    degree_nodes = np.nansum(overlap_mat, axis=1)
+    degree_nodes = np.nansum(continuity_kernel*overlap_mat, axis=1)
     SI = 1 - 2*np.nansum(degree_nodes)/(num_bins*(num_bins-1))
     SI = np.max([SI, 0])
     if verbose: print(f"\b\b\b: {SI:.2f}")
+
     #iii). Shuffling
     shuf_SI = np.zeros((num_shuffles,))*np.nan
     shuf_overlap_mat = np.zeros((overlap_mat.shape))
@@ -571,11 +678,8 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
                                             neighborhood_size, distance_metric)
                 shuf_overlap_mat[a,b] = overlap_a_b
                 shuf_overlap_mat[b,a] = overlap_b_a
-        #iii) apply continuity kernel
-        if not isinstance(continuity_kernel, type(None)):
-            shuf_overlap_mat = continuity_kernel*shuf_overlap_mat
         #iii) compute structure_index (SI)
-        degree_nodes = np.nansum(shuf_overlap_mat, axis=1)
+        degree_nodes = np.nansum(continuity_kernel*shuf_overlap_mat, axis=1)
         shuf_SI[s_idx] = 1 - 2*np.nansum(degree_nodes)/(num_bins*(num_bins-1))
         shuf_SI[s_idx] = np.max([shuf_SI[s_idx], 0])
         if verbose: bar.update(1) 
@@ -583,7 +687,9 @@ def compute_structure_index(data, label, n_bins=10, dims=None, **kwargs):
     if verbose and num_shuffles>0:
         print(f"Shuffling 99th percentile: {np.percentile(shuf_SI,99):.2f}")
 
-    return SI, (bin_label,coords), overlap_mat, shuf_SI
+    process_info = (bin_label, coords, continuity_kernel)
+    
+    return SI, process_info, overlap_mat, shuf_SI
 
 
 def draw_graph(overlap_mat, ax, node_cmap = plt.cm.tab10, edge_cmap = plt.cm.Greys, **kwargs):
