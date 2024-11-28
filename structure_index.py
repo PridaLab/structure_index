@@ -1,8 +1,7 @@
-import warnings, copy #,sys
+import warnings, copy
 import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
-#from scipy import sparse, linalg
 from sklearn.neighbors import NearestNeighbors
 from scipy.spatial import distance_matrix
 try:
@@ -15,8 +14,7 @@ from sklearn.manifold import Isomap
 from decorator import decorator
 from tqdm.auto import tqdm
 import networkx as nx
-# overlap_options = ['one_third','continuity']
-# graph_options = ['binary', 'weighted']
+
 distance_options = ['euclidean','geodesic']
 continuity_kernel_options = ['gaussian']
 
@@ -307,12 +305,12 @@ def _compute_overlap_perc_neighbors(cloud1, cloud2, perc, distance_metric):
     return overlap_1_2, overlap_2_1
 
 
-def _generate_gaussian_continuity_kernel(size, sigma):
+def _generate_gaussian_continuity_kernel(size, amp, sigma, slope):
     gaus = lambda x,x0,sig: np.exp(-(((x-x0)**2)/(2*sig**2)));
     kernel_gauss = np.zeros((size, size))*np.nan
     for node in range(size):
-        node_gauss = 1 - gaus(np.arange(size),node,sigma)
-        kernel_gauss[node,:] = (size-1)*node_gauss/np.nansum(node_gauss)
+        node_gauss = amp* (1 - gaus(np.arange(size),node,sigma))**slope
+        kernel_gauss[node,:] = node_gauss# (size-1)*node_gauss/np.nansum(node_gauss)
     return kernel_gauss
 
 
@@ -378,7 +376,10 @@ def _handle_discrete_label_input(kwargs, label):
 
 def _handle_continuity_kernel_input(kwargs, label, discrete_label, n_bins):
     total_n_bins = np.prod(n_bins)
-    if 'continuity_kernel' not in kwargs: return np.ones((total_n_bins, total_n_bins))
+    if 'continuity_kernel' not in kwargs: 
+        continuity_kernel = np.ones((total_n_bins, total_n_bins))
+        np.fill_diagonal(continuity_kernel, 0)
+        return continuity_kernel
     #continuity kernel for vectorial labels not implemented
     if label.shape[1]>1:
         warnings.warn(f"'continuity_kernel' is not currently supported for "
@@ -398,18 +399,22 @@ def _handle_continuity_kernel_input(kwargs, label, discrete_label, n_bins):
             f"'continuity_kernel'. Valid options are {continuity_kernel_options}."
         if continuity_kernel=='gaussian':
 
-            if 'continuity_alpha' in kwargs:
-                continuity_alpha = kwargs['continuity_alpha']
+            if 'gaussian_slope' in kwargs:
+                gaussian_slope = kwargs['gaussian_slope']
             else: 
-                continuity_alpha = 1.2;
+                gaussian_slope = 1.2;
 
             if 'gaussian_sigma' in kwargs:
                 sigma = kwargs['gaussian_sigma']
             else:
                 sigma = 0.5*total_n_bins / (2 * np.sqrt(2 * np.log(2)))
+            if 'gaussian_amp' in kwargs:
+                amp = kwargs['gaussian_amp']
+            else:
+                amp = 2
             #create gaussian kernel
-            continuity_kernel = _generate_gaussian_continuity_kernel(total_n_bins, sigma)
-            continuity_kernel = continuity_kernel**continuity_alpha
+            continuity_kernel = _generate_gaussian_continuity_kernel(total_n_bins, amp, sigma, gaussian_slope)
+            # continuity_kernel = continuity_kernel**gaussian_slope
             # continuity_kernel = continuity_kernel/np.sum(continuity_kernel,axis=1)
 
     elif isinstance(continuity_kernel, np.ndarray):
@@ -635,7 +640,9 @@ def compute_structure_index(data, label, n_bins=10, **kwargs):
     if not isinstance(continuity_kernel, type(None)):
         continuity_kernel = np.delete(continuity_kernel, del_labels, 0)
         continuity_kernel = np.delete(continuity_kernel, del_labels, 1)
-    continuity_kernel = continuity_kernel*(num_bins-1)/np.sum(continuity_kernel,axis=1)
+
+    max_out_degree = np.nansum(continuity_kernel)
+    # continuity_kernel = continuity_kernel*(num_bins-1)/np.sum(continuity_kernel,axis=1)
     #__________________________________________________________________________
     #|                                                                        |#
     #|                       2. COMPUTE STRUCTURE INDEX                       |#
@@ -658,7 +665,7 @@ def compute_structure_index(data, label, n_bins=10, **kwargs):
     #ii). compute structure_index (SI)
     if verbose: print('Computing structure index...', sep='', end = '')
     degree_nodes = np.nansum(continuity_kernel*overlap_mat, axis=1)
-    SI = 1 - 2*np.nansum(degree_nodes)/(num_bins*(num_bins-1))
+    SI = 1 - 2*np.nansum(degree_nodes)/max_out_degree
     SI = np.max([SI, 0])
     if verbose: print(f"\b\b\b: {SI:.2f}")
 
@@ -674,20 +681,23 @@ def compute_structure_index(data, label, n_bins=10, **kwargs):
             A = data[shuf_bin_label==unique_bin_label[a]]
             for b in range(a+1, shuf_overlap_mat.shape[1]):
                 B = data[shuf_bin_label==unique_bin_label[b]]
-                overlap_a_b, overlap_b_a = cloud_overlap(A,B, 
+                overlap_a_b, overlap_b_a = compute_overlap(A,B, 
                                             neighborhood_size, distance_metric)
                 shuf_overlap_mat[a,b] = overlap_a_b
                 shuf_overlap_mat[b,a] = overlap_b_a
-        #iii) compute structure_index (SI)
         degree_nodes = np.nansum(continuity_kernel*shuf_overlap_mat, axis=1)
-        shuf_SI[s_idx] = 1 - 2*np.nansum(degree_nodes)/(num_bins*(num_bins-1))
+        shuf_SI[s_idx] = 1 - 2*np.nansum(degree_nodes)/max_out_degree
         shuf_SI[s_idx] = np.max([shuf_SI[s_idx], 0])
         if verbose: bar.update(1) 
     if verbose: bar.close()
     if verbose and num_shuffles>0:
         print(f"Shuffling 99th percentile: {np.percentile(shuf_SI,99):.2f}")
 
-    process_info = (bin_label, coords, continuity_kernel)
+    process_info = {
+        'bin_label': bin_label, 
+        'bin_coords': coords, 
+        'continuity_kernel': continuity_kernel
+        }
     
     return SI, process_info, overlap_mat, shuf_SI
 
