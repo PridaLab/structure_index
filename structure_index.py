@@ -221,8 +221,22 @@ def cloud_overlap_neighbors(cloud1, cloud2, k, distance_metric):
             _, I = index.search(cloud_all, k+1)
             I = I[:,1:]
         else:
-            knn = NearestNeighbors(n_neighbors=k, metric="minkowski", p=2).fit(cloud_all)
-            I = knn.kneighbors(return_distance=False)
+            if k < cloud_all.shape[0]:
+                knn = NearestNeighbors(n_neighbors=k, metric="minkowski", p=2).fit(
+                    cloud_all
+                )
+                I = knn.kneighbors(return_distance=False)
+            else:
+                # Generate I for the case where all points are neighbors of each other
+                n_points = cloud_all.shape[0]
+                effective_k = min(k, n_points - 1)  # Cap k to avoid including self
+                # Create a matrix of indices [0, 1, ..., n_points-1] for each row
+                I = np.tile(np.arange(n_points), (n_points, 1))
+                # Shift indices to exclude self: for row i, replace index i with n_points-1
+                np.fill_diagonal(I, n_points - 1)
+                # Sort each row to ensure consistent order and take first effective_k columns
+                I = np.sort(I, axis=1)[:, :effective_k].astype(np.int32)
+            
 
     elif distance_metric == 'geodesic':
         model_iso = Isomap(n_components = 1)
