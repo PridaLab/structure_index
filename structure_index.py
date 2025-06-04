@@ -212,6 +212,8 @@ def cloud_overlap_neighbors(cloud1, cloud2, k, distance_metric):
     idx_sep = cloud1.shape[0]
     #Create cloud label
     cloud_label = np.hstack((np.ones(cloud1.shape[0]), np.ones(cloud2.shape[0])*2))
+    n_points = cloud_all.shape[0]
+    effective_k = min(k, n_points - 1)  # Cap k to avoid including self
 
     #Compute k neighbours graph
     if distance_metric == 'euclidean':
@@ -228,8 +230,6 @@ def cloud_overlap_neighbors(cloud1, cloud2, k, distance_metric):
                 I = knn.kneighbors(return_distance=False)
             else:
                 # Generate I for the case where all points are neighbors of each other
-                n_points = cloud_all.shape[0]
-                effective_k = min(k, n_points - 1)  # Cap k to avoid including self
                 # Create a matrix of indices [0, 1, ..., n_points-1] for each row
                 I = np.tile(np.arange(n_points), (n_points, 1))
                 # Shift indices to exclude self: for row i, replace index i with n_points-1
@@ -247,8 +247,8 @@ def cloud_overlap_neighbors(cloud1, cloud2, k, distance_metric):
 
     #Compute overlapping
         #total fraction of neighbors that belong to the other cloud
-    overlap_1_2 = np.sum(I[:idx_sep,:]>=idx_sep)/(cloud1.shape[0]*k)
-    overlap_2_1 = np.sum(I[idx_sep:,:]<idx_sep)/(cloud2.shape[0]*k)
+    overlap_1_2 = np.sum(I[:idx_sep,:]>=idx_sep)/(cloud1.shape[0]*effective_k)
+    overlap_2_1 = np.sum(I[idx_sep:,:]<idx_sep)/(cloud2.shape[0]*effective_k)
 
     return overlap_1_2, overlap_2_1
 
