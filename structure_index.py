@@ -212,7 +212,11 @@ def cloud_overlap_neighbors(cloud1, cloud2, k, distance_metric):
     idx_sep = cloud1.shape[0]
     #Create cloud label
     cloud_label = np.hstack((np.ones(cloud1.shape[0]), np.ones(cloud2.shape[0])*2))
-
+    n_points = cloud_all.shape[0]
+    if k>n_points -1: #  all points are neighbors of each other
+        overlap_1_2 = cloud1.shape[0]*cloud2.shape[0]/(cloud1.shape[0]*(n_points-1))
+        overlap_2_1 = cloud1.shape[0]*cloud2.shape[0]/(cloud2.shape[0]*(n_points-1))
+        return overlap_1_2, overlap_2_1
     #Compute k neighbours graph
     if distance_metric == 'euclidean':
         if use_fast:
@@ -221,16 +225,18 @@ def cloud_overlap_neighbors(cloud1, cloud2, k, distance_metric):
             _, I = index.search(cloud_all, k+1)
             I = I[:,1:]
         else:
-            knn = NearestNeighbors(n_neighbors=k, metric="minkowski", p=2).fit(cloud_all)
+            knn = NearestNeighbors(n_neighbors=k, metric="minkowski", p=2).fit(
+                cloud_all
+            )
             I = knn.kneighbors(return_distance=False)
-
+ 
     elif distance_metric == 'geodesic':
         model_iso = Isomap(n_components = 1)
         emb = model_iso.fit_transform(cloud_all)
         dist_mat = model_iso.dist_matrix_
         knn = NearestNeighbors(n_neighbors=k, metric="precomputed").fit(dist_mat)
         I = knn.kneighbors(return_distance=False)
-
+ 
     #Compute overlapping
         #total fraction of neighbors that belong to the other cloud
     overlap_1_2 = np.sum(I[:idx_sep,:]>=idx_sep)/(cloud1.shape[0]*k)
